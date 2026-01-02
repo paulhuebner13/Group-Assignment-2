@@ -23,6 +23,8 @@
     prepareRows,
 
     init({ slotSelector, preparedRows }) {
+      // Coarse grid size in projected pixels; larger size = fewer pie charts (helps de-clutter London).
+      const GRID_SIZE_PX = 48;
 
       const container = d3.select(slotSelector);
       container.selectAll("*").remove();
@@ -54,7 +56,8 @@
 
       // Separate layers (VERY important)
       const gLand = gRoot.append("g");
-      const gPoints = gRoot.append("g");
+      const gDots = gRoot.append("g");
+      const gPies = gRoot.append("g");
       const gCoast = gRoot.append("g");
 
       const projection = d3.geoMercator()
@@ -64,12 +67,19 @@
 
       const path = d3.geoPath().projection(projection);
 
+      const severityOrder = ["Fatal", "Serious", "Slight"];
+
       const severityColor = d3.scaleOrdinal()
-        .domain(["Fatal", "Serious", "Slight"])
+        .domain(severityOrder)
         .range(["#ff4b4b", "#ff9f1c", "#ffd166"]);
+
+      const pieGenerator = d3.pie()
+        .value(d => d.value)
+        .sort((a, b) => severityOrder.indexOf(a.key) - severityOrder.indexOf(b.key));
 
       // GeoJSON cached for drawing
       let mapFeatures = null;
+      let lastState = { mode: "ALL", monthIndex: 0, mapView: "DOTS" };
 
       // ---- Zoom & pan ----
       const zoom = d3.zoom()
@@ -104,19 +114,6 @@
           .attr("stroke", "none");
 
         // Coastline contour ABOVE points
-        gCoast.selectAll("path.coast-halo")
-          .data(mapFeatures)
-          .join("path")
-          .attr("class", "coast-halo")
-          .attr("d", path)
-          .attr("fill", "none")
-          .attr("stroke", "#ffffff")
-          .attr("stroke-opacity", 0.5)
-          .attr("stroke-width", 3)
-          .attr("stroke-linejoin", "round")
-          .attr("stroke-linecap", "round")
-          .attr("vector-effect", "non-scaling-stroke");
-
         gCoast.selectAll("path.coastline")
           .data(mapFeatures)
           .join("path")
@@ -129,10 +126,21 @@
           .attr("stroke-linejoin", "round")
           .attr("stroke-linecap", "round")
           .attr("vector-effect", "non-scaling-stroke");
+
+        // If the user is currently in pie view, render once geo is ready.
+        if (lastState.mapView === "PIES") {
+          renderPies(filteredRows(lastState));
+        }
       });
 
-      function render(rows) {
-        const sel = gPoints.selectAll("circle")
+      function filteredRows(state) {
+        return (state.mode === "MONTH")
+          ? preparedRows.filter(r => r.monthIndex === state.monthIndex)
+          : preparedRows;
+      }
+
+      function renderDots(rows) {
+        const sel = gDots.selectAll("circle")
           .data(
             rows,
             d => `${d.longitude},${d.latitude},${d.monthIndex}` // stable key
@@ -154,12 +162,136 @@
         );
       }
 
+      function renderPies(rows) {
+        // Bin accidents into a coarse projected grid to reduce overlap in dense areas (e.g., London).
+        const binMap = new Map();
+
+        for (const r of rows) {
+          const [x, y] = projection([r.longitude, r.latitude]);
+          const gx = Math.round(x / GRID_SIZE_PX);
+          const gy = Math.round(y / GRID_SIZE_PX);
+          const key = `${gx},${gy}`;
+
+          let bucket = binMap.get(key);
+          if (!bucket) {
+            bucket = {
+              gx,
+              gy,
+              sumX: 0,
+              sumY: 0,
+              Fatal: 0,
+              Serious: 0,
+              Slight: 0,
+              total: 0
+            };
+            binMap.set(key, bucket);
+          }
+
+          bucket.sumX += x;
+          bucket.sumY += y;
+          if (bucket[r.severity] !== undefined) bucket[r.severity] += 1;
+          bucket.total += 1;
+        }
+
+        const piesData = [];
+        let maxTotal = 0;
+
+        for (const bucket of binMap.values()) {
+          if (bucket.total <= 0) continue;
+          maxTotal = Math.max(maxTotal, bucket.total);
+          const cx = bucket.sumX / bucket.total;
+          const cy = bucket.sumY / bucket.total;
+
+          piesData.push({
+            key: `${bucket.gx},${bucket.gy}`,
+            cx,
+            cy,
+            Fatal: bucket.Fatal,
+            Serious: bucket.Serious,
+            Slight: bucket.Slight,
+            total: bucket.total
+          });
+        }
+
+        const radiusScale = d3.scaleSqrt()
+          .domain([1, Math.max(1, maxTotal)])
+          .range([7, 28]);
+
+        const groups = gPies.selectAll("g.pie")
+          .data(piesData, d => d.key);
+
+        const groupsEnter = groups.enter()
+          .append("g")
+          .attr("class", "pie")
+          .attr("transform", d => `translate(${d.cx},${d.cy})`)
+          .attr("opacity", 0);
+
+        groups.merge(groupsEnter)
+          .attr("transform", d => `translate(${d.cx},${d.cy})`);
+
+        groupsEnter.transition().duration(200).attr("opacity", 1);
+        groups.exit().remove();
+
+        gPies.selectAll("g.pie").each(function (d) {
+          const radius = radiusScale(d.total);
+
+          const slices = severityOrder.map(key => ({ key, value: d[key] || 0 }));
+          const arcs = pieGenerator(slices).filter(a => a.data.value > 0);
+
+          const arcGen = d3.arc()
+            .innerRadius(0)
+            .outerRadius(radius);
+
+          const sel = d3.select(this).selectAll("path")
+            .data(arcs, a => a.data.key);
+
+          sel.join(
+            enter => enter.append("path")
+              .attr("fill", a => severityColor(a.data.key))
+              .attr("opacity", 0.85)
+              .attr("stroke", "#0b1f33")
+              .attr("stroke-width", 0.4)
+              .attr("d", arcGen),
+            update => update
+              .attr("fill", a => severityColor(a.data.key))
+              .attr("d", arcGen),
+            exit => exit.remove()
+          );
+        });
+
+        return piesData.length > 0;
+      }
+
       return {
         update(state) {
-          const rows = (state.mode === "MONTH")
-            ? preparedRows.filter(r => r.monthIndex === state.monthIndex)
-            : preparedRows;
-          render(rows);
+          lastState = state;
+          const rows = filteredRows(state);
+
+          if (state.mapView === "PIES") {
+            // If geojson isn't ready yet, keep showing dots so the button doesn't look broken.
+            if (!mapFeatures) {
+              gPies.attr("display", "none");
+              gDots.attr("display", null);
+              renderDots(rows);
+              return;
+            }
+
+            gDots.attr("display", "none");
+            gPies.attr("display", null);
+            gDots.selectAll("circle").remove();
+            const drewPies = renderPies(rows);
+            // If, for any reason, no pies were drawn, fall back to dots so the view is never empty.
+            if (!drewPies) {
+              gPies.attr("display", "none");
+              gDots.attr("display", null);
+              renderDots(rows);
+            }
+          } else {
+            gPies.attr("display", "none");
+            gDots.attr("display", null);
+            gPies.selectAll("g.pie").remove();
+            renderDots(rows);
+          }
         }
       };
     }

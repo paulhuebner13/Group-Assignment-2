@@ -17,6 +17,7 @@ function loadScript(src) {
 const allYearBtn = document.getElementById("allYearBtn");
 const slider = document.getElementById("monthSlider");
 const dashboard = document.getElementById("dashboard");
+const mapViewBtn = document.getElementById("mapViewBtn");
 
 const monthLabelsWrap = document.getElementById("monthLabels");
 const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel"));
@@ -30,7 +31,8 @@ const panels = {
 const state = {
   mode: "ALL",      // ALL or MONTH
   monthIndex: 0,
-  fullscreen: null
+  fullscreen: null,
+  mapView: "DOTS"   // DOTS or PIES
 };
 
 // ---- Module instances ----
@@ -51,6 +53,11 @@ const CONFIG = {
 
 function applyUIState() {
   allYearBtn.setAttribute("aria-pressed", state.mode === "ALL" ? "true" : "false");
+
+  if (mapViewBtn) {
+    mapViewBtn.textContent = (state.mapView === "DOTS") ? "View: Points" : "View: Pie Charts";
+    mapViewBtn.setAttribute("aria-pressed", state.mapView === "PIES" ? "true" : "false");
+  }
 
   monthLabelEls.forEach((el, idx) => {
     const active = (state.mode === "MONTH" && idx === state.monthIndex);
@@ -105,6 +112,14 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
     updateVisuals();
   });
 });
+
+if (mapViewBtn) {
+  mapViewBtn.addEventListener("click", () => {
+    state.mapView = (state.mapView === "DOTS") ? "PIES" : "DOTS";
+    applyUIState();
+    updateVisuals();
+  });
+}
 
 (async function main() {
   // 1) Load D3 once
