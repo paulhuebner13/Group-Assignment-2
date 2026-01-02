@@ -35,9 +35,19 @@
         .attr("width", width)
         .attr("height", height);
 
+      // Transparent overlay to reliably capture pan/zoom interactions
+      const overlay = svg.append("rect")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("fill", "transparent")
+        .style("cursor", "grab");
+
+      // Root group that will be transformed by zoom (contains map + points)
+      const gRoot = svg.append("g");
+
       // Separate layers (VERY important)
-      const gMap = svg.append("g");
-      const gPoints = svg.append("g");
+      const gMap = gRoot.append("g");
+      const gPoints = gRoot.append("g");
 
       const projection = d3.geoMercator()
         .center([-2, 54])
@@ -49,6 +59,21 @@
       const severityColor = d3.scaleOrdinal()
         .domain(["Fatal", "Serious", "Slight"])
         .range(["#ff4b4b", "#ff9f1c", "#ffd166"]);
+
+      // ---- Zoom & pan ----
+      const zoom = d3.zoom()
+        // Allow zooming out below the initial scale
+        .scaleExtent([0.6, 10])
+        .on("zoom", (event) => {
+          gRoot.attr("transform", event.transform);
+        });
+
+      overlay.call(zoom);
+
+      overlay
+        .on("mousedown", () => overlay.style("cursor", "grabbing"))
+        .on("mouseup", () => overlay.style("cursor", "grab"))
+        .on("mouseleave", () => overlay.style("cursor", "grab"));
 
       // ---- Draw base map ONCE ----
       d3.json("data/gb.json").then(geojson => {
