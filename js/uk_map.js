@@ -35,6 +35,13 @@
         .attr("width", width)
         .attr("height", height);
 
+      // Background (ocean)
+      svg.append("rect")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("fill", "#7fb7e6")
+        .attr("fill-opacity", 0.7);
+
       // Transparent overlay to reliably capture pan/zoom interactions
       const overlay = svg.append("rect")
         .attr("width", width)
@@ -46,8 +53,9 @@
       const gRoot = svg.append("g");
 
       // Separate layers (VERY important)
-      const gMap = gRoot.append("g");
+      const gLand = gRoot.append("g");
       const gPoints = gRoot.append("g");
+      const gCoast = gRoot.append("g");
 
       const projection = d3.geoMercator()
         .center([-2, 54])
@@ -59,6 +67,9 @@
       const severityColor = d3.scaleOrdinal()
         .domain(["Fatal", "Serious", "Slight"])
         .range(["#ff4b4b", "#ff9f1c", "#ffd166"]);
+
+      // GeoJSON cached for drawing
+      let mapFeatures = null;
 
       // ---- Zoom & pan ----
       const zoom = d3.zoom()
@@ -75,15 +86,49 @@
         .on("mouseup", () => overlay.style("cursor", "grab"))
         .on("mouseleave", () => overlay.style("cursor", "grab"));
 
+      // Keep the overlay above the map so zoom/pan works anywhere.
+      overlay.raise();
+
       // ---- Draw base map ONCE ----
       d3.json("data/gb.json").then(geojson => {
-        gMap.selectAll("path")
-          .data(geojson.features)
+        mapFeatures = geojson.features;
+
+        // Land layer
+        gLand.selectAll("path.land")
+          .data(mapFeatures)
           .join("path")
+          .attr("class", "land")
           .attr("d", path)
-          .attr("fill", "#2d2d2d")
-          .attr("stroke", "#555")
-          .attr("stroke-width", 0.5);
+          // Land is always white; points on top show accident locations.
+          .attr("fill", "#f3d6cf")
+          .attr("stroke", "none");
+
+        // Coastline contour ABOVE points
+        gCoast.selectAll("path.coast-halo")
+          .data(mapFeatures)
+          .join("path")
+          .attr("class", "coast-halo")
+          .attr("d", path)
+          .attr("fill", "none")
+          .attr("stroke", "#ffffff")
+          .attr("stroke-opacity", 0.5)
+          .attr("stroke-width", 3)
+          .attr("stroke-linejoin", "round")
+          .attr("stroke-linecap", "round")
+          .attr("vector-effect", "non-scaling-stroke");
+
+        gCoast.selectAll("path.coastline")
+          .data(mapFeatures)
+          .join("path")
+          .attr("class", "coastline")
+          .attr("d", path)
+          .attr("fill", "none")
+          .attr("stroke", "#0b1f33")
+          .attr("stroke-opacity", 0.9)
+          .attr("stroke-width", 0.7)
+          .attr("stroke-linejoin", "round")
+          .attr("stroke-linecap", "round")
+          .attr("vector-effect", "non-scaling-stroke");
       });
 
       function render(rows) {
@@ -114,7 +159,6 @@
           const rows = (state.mode === "MONTH")
             ? preparedRows.filter(r => r.monthIndex === state.monthIndex)
             : preparedRows;
-
           render(rows);
         }
       };
