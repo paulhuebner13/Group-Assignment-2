@@ -73,6 +73,11 @@
         .domain(severityOrder)
         .range(["#ff4b4b", "#ff9f1c", "#ffd166"]);
 
+      // Slightly punchier palette for the DOTS view (keeps Fatal/Serious more visible)
+      const dotColor = d3.scaleOrdinal()
+        .domain(severityOrder)
+        .range(["#ff1f3d", "#ff7a00", "#ffd166"]);
+
       const pieGenerator = d3.pie()
         .value(d => d.value)
         .sort((a, b) => severityOrder.indexOf(a.key) - severityOrder.indexOf(b.key));
@@ -148,13 +153,19 @@
 
         sel.join(
           enter => enter.append("circle")
-            .attr("r", 1.5)
-            .attr("opacity", 0.5)
-            .attr("fill", d => severityColor(d.severity))
+            .attr("r", d => (d.severity === "Fatal") ? 2.4 : (d.severity === "Serious") ? 2.1 : 1.7)
+            .attr("opacity", d => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55)
+            .attr("fill", d => dotColor(d.severity))
+            .attr("stroke", "#0b1f33")
+            .attr("stroke-opacity", 0.35)
+            .attr("stroke-width", 0.35)
             .attr("cx", d => projection([d.longitude, d.latitude])[0])
             .attr("cy", d => projection([d.longitude, d.latitude])[1]),
 
           update => update
+            .attr("r", d => (d.severity === "Fatal") ? 2.4 : (d.severity === "Serious") ? 2.1 : 1.7)
+            .attr("opacity", d => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55)
+            .attr("fill", d => dotColor(d.severity))
             .attr("cx", d => projection([d.longitude, d.latitude])[0])
             .attr("cy", d => projection([d.longitude, d.latitude])[1]),
 
@@ -247,13 +258,13 @@
 
           sel.join(
             enter => enter.append("path")
-              .attr("fill", a => severityColor(a.data.key))
+              .attr("fill", a => dotColor(a.data.key))
               .attr("opacity", 0.85)
               .attr("stroke", "#0b1f33")
               .attr("stroke-width", 0.4)
               .attr("d", arcGen),
             update => update
-              .attr("fill", a => severityColor(a.data.key))
+              .attr("fill", a => dotColor(a.data.key))
               .attr("d", arcGen),
             exit => exit.remove()
           );
