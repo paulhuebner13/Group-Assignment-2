@@ -1,6 +1,7 @@
 // main.js
 // Loads dependencies (d3 + modules) dynamically so index.html stays unchanged.
 
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -35,13 +36,16 @@ const state = {
 // ---- Module instances ----
 let heatmapInstance = null;
 let preparedRows = [];
+let mapInstance = null;   
+let mapPreparedRows = []; 
 
 // Configure paths here (only here!)
 const CONFIG = {
   d3Url: "https://d3js.org/d3.v7.min.js",
   dataCsv: "data/Road Accident Data.csv",
   modules: {
-    heatmap: "js/heatmap.js"
+    heatmap: "js/heatmap.js",
+    map: "js/uk_map.js" 
   }
 };
 
@@ -66,8 +70,8 @@ function applyUIState() {
 }
 
 function updateVisuals() {
-  if (!heatmapInstance) return;
-  heatmapInstance.update(state);
+  if (heatmapInstance) heatmapInstance.update(state);
+  if (mapInstance) mapInstance.update(state);
 }
 
 allYearBtn.addEventListener("click", () => {
@@ -108,12 +112,15 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
 
   // 2) Load heatmap module
   await loadScript(CONFIG.modules.heatmap);
+  await loadScript(CONFIG.modules.map);
 
   // 3) Load data with d3.csv (now available)
   const raw = await d3.csv(CONFIG.dataCsv);
 
   // 4) Prepare rows in module
   preparedRows = window.HeatmapModule.prepareRows(raw);
+  mapPreparedRows = window.UKMapModule.prepareRows(raw);
+
 
   // 5) Create heatmap
   heatmapInstance = window.HeatmapModule.init({
@@ -121,10 +128,17 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
     preparedRows
   });
 
+  mapInstance = window.UKMapModule.init({
+  slotSelector: "#mapSlot",
+  preparedRows: mapPreparedRows
+  });
+
   // 6) Apply fixed global scale once (stable scale)
   const fixedMax = window.HeatmapModule.computeFixedMax(preparedRows);
   heatmapInstance.setFixedScaleMax(fixedMax);
 
   applyUIState();
+  requestAnimationFrame(() => {
   updateVisuals();
+});
 })().catch(err => console.error(err));
