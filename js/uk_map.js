@@ -56,6 +56,7 @@
 
       // Separate layers (VERY important)
       const gLand = gRoot.append("g");
+      const gInnerBorders = gRoot.append("g");
       const gDots = gRoot.append("g");
       const gPies = gRoot.append("g");
       const gCoast = gRoot.append("g");
@@ -118,9 +119,30 @@
           .attr("fill", "#f3d6cf")
           .attr("stroke", "none");
 
-        // Coastline contour ABOVE points
-        gCoast.selectAll("path.coastline")
+        // Inner borders (only shown in DOTS / points view)
+        // Note: drawing per-feature outlines includes the outer edge too, but the outer coastline
+        // is drawn separately below; we keep these borders subtle so the coast doesn't look doubled.
+        gInnerBorders.selectAll("path.inner-borders")
           .data(mapFeatures)
+          .join("path")
+          .attr("class", "inner-borders")
+          .attr("d", path)
+          .attr("fill", "none")
+          .attr("stroke", "#0b1f33")
+          .attr("stroke-opacity", 0.32)
+          .attr("stroke-width", 0.65)
+          .attr("stroke-linejoin", "round")
+          .attr("stroke-linecap", "round")
+          .attr("vector-effect", "non-scaling-stroke")
+          .attr("pointer-events", "none");
+
+        // Coastline contour ABOVE points
+        // Draw ONLY the outer coastline by merging all polygons.
+        // (Stroking each feature produces interior borders at shared edges.)
+        const mergedOutline = d3.geoMerge(mapFeatures.map(f => f.geometry));
+
+        gCoast.selectAll("path.coastline")
+          .data([mergedOutline])
           .join("path")
           .attr("class", "coastline")
           .attr("d", path)
@@ -277,6 +299,22 @@
         update(state) {
           lastState = state;
           const rows = filteredRows(state);
+
+          // Inner borders are shown in BOTH views:
+          // - DOTS: above points
+          // - PIES: below pie charts
+          gInnerBorders.attr("display", null);
+
+          // Enforce layer order every update (switching views can change z-order).
+          gLand.lower();
+          gInnerBorders.raise();
+          if (state.mapView === "DOTS") {
+            gDots.raise();
+            gInnerBorders.raise();
+          } else {
+            gPies.raise();
+          }
+          gCoast.raise();
 
           if (state.mapView === "PIES") {
             // If geojson isn't ready yet, keep showing dots so the button doesn't look broken.
