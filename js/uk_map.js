@@ -96,12 +96,30 @@
       let mapFeatures = null;
       let lastState = { mode: "ALL", monthIndex: 0, mapView: "DOTS" };
 
+      const dotBaseRadius = (d) => (d.severity === "Fatal") ? 3.0 : (d.severity === "Serious") ? 2.6 : 2.2;
+      const dotBaseOpacity = (d) => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55;
+      const dotBaseStrokeWidth = 0.35;
+
+      // Keep track of zoom so we can keep dots a constant on-screen size.
+      let currentTransform = d3.zoomIdentity;
+
+      function applyNonScalingDots() {
+        const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
+        if (!Number.isFinite(k) || k <= 0) return;
+
+        gDots.selectAll("circle")
+          .attr("r", d => dotBaseRadius(d) / k)
+          .attr("stroke-width", dotBaseStrokeWidth / k);
+      }
+
       // ---- Zoom & pan ----
       const zoom = d3.zoom()
         // Allow zooming out below the initial scale
         .scaleExtent([0.6, 10])
         .on("zoom", (event) => {
-          gRoot.attr("transform", event.transform);
+          currentTransform = event.transform;
+          gRoot.attr("transform", currentTransform);
+          applyNonScalingDots();
         });
 
       // Attach zoom to the SVG so hover events on marks still work.
@@ -232,24 +250,28 @@
 
         sel.join(
           enter => enter.append("circle")
-            .attr("r", d => (d.severity === "Fatal") ? 2.4 : (d.severity === "Serious") ? 2.1 : 1.7)
-            .attr("opacity", d => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55)
+            .attr("r", dotBaseRadius)
+            .attr("opacity", dotBaseOpacity)
             .attr("fill", d => dotColor(d.severity))
             .attr("stroke", "#0b1f33")
             .attr("stroke-opacity", 0.35)
-            .attr("stroke-width", 0.35)
+            .attr("stroke-width", dotBaseStrokeWidth)
             .attr("cx", d => projection([d.longitude, d.latitude])[0])
             .attr("cy", d => projection([d.longitude, d.latitude])[1]),
 
           update => update
-            .attr("r", d => (d.severity === "Fatal") ? 2.4 : (d.severity === "Serious") ? 2.1 : 1.7)
-            .attr("opacity", d => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55)
+            .attr("r", dotBaseRadius)
+            .attr("opacity", dotBaseOpacity)
             .attr("fill", d => dotColor(d.severity))
+            .attr("stroke-width", dotBaseStrokeWidth)
             .attr("cx", d => projection([d.longitude, d.latitude])[0])
             .attr("cy", d => projection([d.longitude, d.latitude])[1]),
 
           exit => exit.remove()
         );
+
+        // If the user is currently zoomed, keep the dots the same on-screen size.
+        applyNonScalingDots();
       }
 
       function renderPies(rows) {
