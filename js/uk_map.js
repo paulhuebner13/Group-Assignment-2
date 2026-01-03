@@ -10,6 +10,7 @@
         longitude: +r.Longitude,
         latitude: +r.Latitude,
         severity: r.Accident_Severity,
+        district: r["Local_Authority_(District)"] || "",
         monthIndex: d ? d.getMonth() : null
       };
     }).filter(d =>
@@ -37,19 +38,27 @@
         .attr("width", width)
         .attr("height", height);
 
+      // Tooltip (for pie chart hover)
+      const tooltip = container.append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("pointer-events", "none")
+        .style("background", "rgba(0,0,0,0.85)")
+        .style("color", "#fff")
+        .style("padding", "8px 10px")
+        .style("border-radius", "10px")
+        .style("font-size", "12px")
+        .style("opacity", 0)
+        .style("transition", "opacity 0.08s linear")
+        .style("z-index", 10)
+        .style("max-width", "320px");
+
       // Background (ocean)
       svg.append("rect")
         .attr("width", width)
         .attr("height", height)
         .attr("fill", "#7fb7e6")
         .attr("fill-opacity", 0.7);
-
-      // Transparent overlay to reliably capture pan/zoom interactions
-      const overlay = svg.append("rect")
-        .attr("width", width)
-        .attr("height", height)
-        .attr("fill", "transparent")
-        .style("cursor", "grab");
 
       // Root group that will be transformed by zoom (contains map + points)
       const gRoot = svg.append("g");
@@ -95,15 +104,13 @@
           gRoot.attr("transform", event.transform);
         });
 
-      overlay.call(zoom);
-
-      overlay
-        .on("mousedown", () => overlay.style("cursor", "grabbing"))
-        .on("mouseup", () => overlay.style("cursor", "grab"))
-        .on("mouseleave", () => overlay.style("cursor", "grab"));
-
-      // Keep the overlay above the map so zoom/pan works anywhere.
-      overlay.raise();
+      // Attach zoom to the SVG so hover events on marks still work.
+      svg.call(zoom);
+      svg.style("cursor", "grab");
+      svg
+        .on("mousedown.cursor", () => svg.style("cursor", "grabbing"))
+        .on("mouseup.cursor", () => svg.style("cursor", "grab"))
+        .on("mouseleave.cursor", () => svg.style("cursor", "grab"));
 
       // ---- Draw base map ONCE ----
       d3.json("data/gb.json").then(geojson => {
@@ -166,6 +173,56 @@
           : preparedRows;
       }
 
+      function tooltipHide() {
+        tooltip.style("opacity", 0);
+      }
+
+      function tooltipMove(event) {
+        const rect = container.node().getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+
+        const tipNode = tooltip.node();
+        const tipW = tipNode.offsetWidth || 0;
+        const tipH = tipNode.offsetHeight || 0;
+
+        const pad = 12;
+        const edgePad = 8;
+
+        let xPos = mouseX + pad;
+        let yPos = mouseY + pad;
+
+        const maxX = rect.width - tipW - edgePad;
+        const maxY = rect.height - tipH - edgePad;
+
+        if (xPos > maxX) xPos = mouseX - pad - tipW;
+        if (yPos > maxY) yPos = mouseY - pad - tipH;
+
+        xPos = Math.max(edgePad, Math.min(xPos, maxX));
+        yPos = Math.max(edgePad, Math.min(yPos, maxY));
+
+        tooltip.style("left", `${xPos}px`).style("top", `${yPos}px`);
+      }
+
+      function tooltipShowPie(event, pie) {
+        const region = pie.topDistrict || "Unknown";
+        const topList = (pie.topDistricts && pie.topDistricts.length)
+          ? pie.topDistricts.map(d => `${d.name} (${d.count})`).join(", ")
+          : "";
+
+        tooltip
+          .style("opacity", 1)
+          .html(
+            `<div><b>Region:</b> ${region}</div>` +
+            (topList ? `<div><b>Top districts:</b> ${topList}</div>` : "") +
+            `<div style="margin-top:6px;"><b>Total:</b> ${pie.total}</div>` +
+            `<div>Fatal: <b>${pie.Fatal}</b></div>` +
+            `<div>Serious: <b>${pie.Serious}</b></div>` +
+            `<div>Slight: <b>${pie.Slight}</b></div>`
+          );
+        tooltipMove(event);
+      }
+
       function renderDots(rows) {
         const sel = gDots.selectAll("circle")
           .data(
@@ -215,7 +272,8 @@
               Fatal: 0,
               Serious: 0,
               Slight: 0,
-              total: 0
+              total: 0,
+              districtCounts: new Map()
             };
             binMap.set(key, bucket);
           }
@@ -224,6 +282,9 @@
           bucket.sumY += y;
           if (bucket[r.severity] !== undefined) bucket[r.severity] += 1;
           bucket.total += 1;
+
+          const district = (r.district || "").trim() || "Unknown";
+          bucket.districtCounts.set(district, (bucket.districtCounts.get(district) || 0) + 1);
         }
 
         const piesData = [];
@@ -235,6 +296,11 @@
           const cx = bucket.sumX / bucket.total;
           const cy = bucket.sumY / bucket.total;
 
+          const districtsSorted = Array.from(bucket.districtCounts.entries())
+            .sort((a, b) => b[1] - a[1]);
+          const topDistrict = districtsSorted.length ? districtsSorted[0][0] : "Unknown";
+          const topDistricts = districtsSorted.slice(0, 3).map(([name, count]) => ({ name, count }));
+
           piesData.push({
             key: `${bucket.gx},${bucket.gy}`,
             cx,
@@ -242,7 +308,9 @@
             Fatal: bucket.Fatal,
             Serious: bucket.Serious,
             Slight: bucket.Slight,
-            total: bucket.total
+            total: bucket.total,
+            topDistrict,
+            topDistricts
           });
         }
 
@@ -311,6 +379,21 @@
               .attr("transform", a => arcTranslate(a))
               .attr("d", a => arcGen(a)),
             exit => exit.remove()
+          );
+
+          // Hover hit-target for the whole pie (prevents flicker between slices)
+          const hit = d3.select(this).selectAll("circle.pie-hit").data([d]);
+          hit.join(
+            enter => enter.append("circle")
+              .attr("class", "pie-hit")
+              .attr("r", radius + 6)
+              .attr("fill", "transparent")
+              .attr("pointer-events", "all")
+              .on("mouseenter", (event) => tooltipShowPie(event, d))
+              .on("mousemove", (event) => tooltipMove(event))
+              .on("mouseleave", () => tooltipHide()),
+            update => update
+              .attr("r", radius + 6)
           );
         });
 
