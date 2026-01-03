@@ -1,6 +1,7 @@
 // main.js
 // Loads dependencies (d3 + modules) dynamically so index.html stays unchanged.
 
+
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -16,6 +17,7 @@ function loadScript(src) {
 const allYearBtn = document.getElementById("allYearBtn");
 const slider = document.getElementById("monthSlider");
 const dashboard = document.getElementById("dashboard");
+const mapViewBtn = document.getElementById("mapViewBtn");
 
 const monthLabelsWrap = document.getElementById("monthLabels");
 const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel"));
@@ -29,24 +31,33 @@ const panels = {
 const state = {
   mode: "ALL",      // ALL or MONTH
   monthIndex: 0,
-  fullscreen: null
+  fullscreen: null,
+  mapView: "DOTS"   // DOTS or PIES
 };
 
 // ---- Module instances ----
 let heatmapInstance = null;
 let preparedRows = [];
+let mapInstance = null;   
+let mapPreparedRows = []; 
 
 // Configure paths here (only here!)
 const CONFIG = {
   d3Url: "https://d3js.org/d3.v7.min.js",
   dataCsv: "data/Road Accident Data.csv",
   modules: {
-    heatmap: "js/heatmap.js"
+    heatmap: "js/heatmap.js",
+    map: "js/uk_map.js" 
   }
 };
 
 function applyUIState() {
   allYearBtn.setAttribute("aria-pressed", state.mode === "ALL" ? "true" : "false");
+
+  if (mapViewBtn) {
+    mapViewBtn.textContent = (state.mapView === "DOTS") ? "View: Points" : "View: Pie Charts";
+    mapViewBtn.setAttribute("aria-pressed", state.mapView === "PIES" ? "true" : "false");
+  }
 
   monthLabelEls.forEach((el, idx) => {
     const active = (state.mode === "MONTH" && idx === state.monthIndex);
@@ -66,8 +77,8 @@ function applyUIState() {
 }
 
 function updateVisuals() {
-  if (!heatmapInstance) return;
-  heatmapInstance.update(state);
+  if (heatmapInstance) heatmapInstance.update(state);
+  if (mapInstance) mapInstance.update(state);
 }
 
 allYearBtn.addEventListener("click", () => {
@@ -102,18 +113,29 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
   });
 });
 
+if (mapViewBtn) {
+  mapViewBtn.addEventListener("click", () => {
+    state.mapView = (state.mapView === "DOTS") ? "PIES" : "DOTS";
+    applyUIState();
+    updateVisuals();
+  });
+}
+
 (async function main() {
   // 1) Load D3 once
   await loadScript(CONFIG.d3Url);
 
   // 2) Load heatmap module
   await loadScript(CONFIG.modules.heatmap);
+  await loadScript(CONFIG.modules.map);
 
   // 3) Load data with d3.csv (now available)
   const raw = await d3.csv(CONFIG.dataCsv);
 
   // 4) Prepare rows in module
   preparedRows = window.HeatmapModule.prepareRows(raw);
+  mapPreparedRows = window.UKMapModule.prepareRows(raw);
+
 
   // 5) Create heatmap
   heatmapInstance = window.HeatmapModule.init({
@@ -121,10 +143,17 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
     preparedRows
   });
 
+  mapInstance = window.UKMapModule.init({
+  slotSelector: "#mapSlot",
+  preparedRows: mapPreparedRows
+  });
+
   // 6) Apply fixed global scale once (stable scale)
   const fixedMax = window.HeatmapModule.computeFixedMax(preparedRows);
   heatmapInstance.setFixedScaleMax(fixedMax);
 
   applyUIState();
+  requestAnimationFrame(() => {
   updateVisuals();
+});
 })().catch(err => console.error(err));

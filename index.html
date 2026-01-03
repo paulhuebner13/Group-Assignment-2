@@ -199,6 +199,12 @@
       min-width: 0;
     }
 
+    .panelActions{
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
     .panelTitle{
       font-size: 14px;
       font-weight: 900;
@@ -292,7 +298,10 @@
       <section class="panel" id="mapPanel">
         <div class="panelHeader">
           <div class="panelTitle">UK Map</div>
-          <button class="fsBtn" data-fs="map">Fullscreen</button>
+          <div class="panelActions">
+            <button id="mapViewBtn" class="fsBtn" aria-pressed="false">View: Points</button>
+            <button class="fsBtn" data-fs="map">Fullscreen</button>
+          </div>
         </div>
         <div class="vizSlot" id="mapSlot"></div>
       </section>
@@ -321,5 +330,7 @@
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="js/heatmap.js" defer></script>
   <script src="js/main.js" defer></script>
+  <script src="js/uk_map.js" defer></script>
+
 </body>
 </html>
