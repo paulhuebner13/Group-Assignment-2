@@ -271,9 +271,24 @@
           const slices = severityOrder.map(key => ({ key, value: d[key] || 0 }));
           const arcs = pieGenerator(slices).filter(a => a.data.value > 0);
 
-          const arcGen = d3.arc()
+          // Emphasize Fatal slice visually (without changing angles/proportions)
+          const baseArc = d3.arc()
             .innerRadius(0)
             .outerRadius(radius);
+
+          const arcGen = (a) => d3.arc()
+            .innerRadius(0)
+            .outerRadius(radius + (a.data.key === "Fatal" ? 3 : 0))(a);
+
+          const fatalOffset = Math.min(6, radius * 0.18);
+          const arcTranslate = (a) => {
+            if (a.data.key !== "Fatal" || !a.data.value) return null;
+            const [cx, cy] = baseArc.centroid(a);
+            const len = Math.hypot(cx, cy) || 1;
+            const dx = (cx / len) * fatalOffset;
+            const dy = (cy / len) * fatalOffset;
+            return `translate(${dx},${dy})`;
+          };
 
           const sel = d3.select(this).selectAll("path")
             .data(arcs, a => a.data.key);
@@ -281,13 +296,20 @@
           sel.join(
             enter => enter.append("path")
               .attr("fill", a => dotColor(a.data.key))
-              .attr("opacity", 0.85)
-              .attr("stroke", "#0b1f33")
-              .attr("stroke-width", 0.4)
-              .attr("d", arcGen),
+              .attr("opacity", a => (a.data.key === "Fatal" ? 1 : 0.82))
+              .attr("stroke", a => (a.data.key === "Fatal" ? "#ffffff" : "#0b1f33"))
+              .attr("stroke-opacity", a => (a.data.key === "Fatal" ? 0.9 : 0.55))
+              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.7 : 0.4))
+              .attr("transform", a => arcTranslate(a))
+              .attr("d", a => arcGen(a)),
             update => update
               .attr("fill", a => dotColor(a.data.key))
-              .attr("d", arcGen),
+              .attr("opacity", a => (a.data.key === "Fatal" ? 1 : 0.82))
+              .attr("stroke", a => (a.data.key === "Fatal" ? "#ffffff" : "#0b1f33"))
+              .attr("stroke-opacity", a => (a.data.key === "Fatal" ? 0.9 : 0.55))
+              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.7 : 0.4))
+              .attr("transform", a => arcTranslate(a))
+              .attr("d", a => arcGen(a)),
             exit => exit.remove()
           );
         });
