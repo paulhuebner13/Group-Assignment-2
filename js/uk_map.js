@@ -29,14 +29,37 @@
 
       const container = d3.select(slotSelector);
       container.selectAll("*").remove();
+      container.style("position", "relative");
 
       const node = container.node();
       const width = node.clientWidth || 300;
       const height = node.clientHeight || 300;
 
+      // Layering: base SVG for land/water -> canvas for dots -> overlay SVG for borders/pies/coastline.
+      const svgBase = container.append("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .style("position", "absolute")
+        .style("inset", 0)
+        .style("z-index", 1);
+
+      const canvas = container.append("canvas")
+        .attr("width", width)
+        .attr("height", height)
+        .style("position", "absolute")
+        .style("inset", 0)
+        .style("z-index", 2)
+        .style("width", "100%")
+        .style("height", "100%");
+
+      const ctx = canvas.node().getContext("2d");
+
       const svg = container.append("svg")
         .attr("width", width)
-        .attr("height", height);
+        .attr("height", height)
+        .style("position", "absolute")
+        .style("inset", 0)
+        .style("z-index", 3);
 
       // Tooltip (for pie chart hover)
       const tooltip = container.append("div")
@@ -53,20 +76,20 @@
         .style("z-index", 10)
         .style("max-width", "320px");
 
-      // Background (ocean)
-      svg.append("rect")
+      // Background (ocean stays static while zooming)
+      svgBase.append("rect")
         .attr("width", width)
         .attr("height", height)
         .attr("fill", "#7fb7e6")
         .attr("fill-opacity", 0.7);
 
-      // Root group that will be transformed by zoom (contains map + points)
+      // Root groups transformed by zoom
+      const gBaseRoot = svgBase.append("g");
       const gRoot = svg.append("g");
 
       // Separate layers (VERY important)
-      const gLand = gRoot.append("g");
+      const gLand = gBaseRoot.append("g");
       const gInnerBorders = gRoot.append("g");
-      const gDots = gRoot.append("g");
       const gPies = gRoot.append("g");
       const gCoast = gRoot.append("g");
 
@@ -78,10 +101,6 @@
       const path = d3.geoPath().projection(projection);
 
       const severityOrder = ["Fatal", "Serious", "Slight"];
-
-      const severityColor = d3.scaleOrdinal()
-        .domain(severityOrder)
-        .range(["#ff4b4b", "#ff9f1c", "#ffd166"]);
 
       // Slightly punchier palette for the DOTS view (keeps Fatal/Serious more visible)
       const dotColor = d3.scaleOrdinal()
@@ -96,20 +115,71 @@
       let mapFeatures = null;
       let lastState = { mode: "ALL", monthIndex: 0, mapView: "DOTS" };
 
-      const dotBaseRadius = (d) => (d.severity === "Fatal") ? 3.0 : (d.severity === "Serious") ? 2.6 : 2.2;
-      const dotBaseOpacity = (d) => (d.severity === "Fatal") ? 0.9 : (d.severity === "Serious") ? 0.85 : 0.55;
+      // Pre-project all points once; also bucket by month to avoid filtering 300k rows repeatedly.
+      const rowsByMonth = Array.from({ length: 12 }, () => []);
+      const allRows = preparedRows.map(r => {
+        const [x, y] = projection([r.longitude, r.latitude]);
+        const row = { ...r, x, y };
+        rowsByMonth[row.monthIndex].push(row);
+        return row;
+      });
+
+      // Radii chosen so Fatal > Serious > Slight for immediate visual priority.
+      const dotBaseRadius = (d) => (d.severity === "Fatal") ? 3.6 : (d.severity === "Serious") ? 2.8 : 2.2;
+      const dotBaseOpacity = (d) => (d.severity === "Fatal") ? 0.95 : (d.severity === "Serious") ? 0.88 : 0.6;
       const dotBaseStrokeWidth = 0.35;
+      const dotStrokeColor = "#0b1f33";
 
       // Keep track of zoom so we can keep dots a constant on-screen size.
       let currentTransform = d3.zoomIdentity;
+      let activeRows = allRows;
+      let dotsVisible = false;
 
-      function applyNonScalingDots() {
+      function clearDots() {
+        ctx.clearRect(0, 0, width, height);
+        canvas.style("opacity", 0);
+        dotsVisible = false;
+      }
+
+      function renderDots(rows) {
+        activeRows = rows;
+        canvas.style("opacity", 1);
+        dotsVisible = true;
+
+        ctx.clearRect(0, 0, width, height);
+
         const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
-        if (!Number.isFinite(k) || k <= 0) return;
+        const invK = 1 / k;
+        const strokeW = dotBaseStrokeWidth * invK;
 
-        gDots.selectAll("circle")
-          .attr("r", d => dotBaseRadius(d) / k)
-          .attr("stroke-width", dotBaseStrokeWidth / k);
+        const severityGroups = { Fatal: [], Serious: [], Slight: [] };
+        for (const r of rows) {
+          if (severityGroups[r.severity]) severityGroups[r.severity].push(r);
+        }
+
+        ctx.save();
+        ctx.translate(currentTransform.x, currentTransform.y);
+        ctx.scale(k, k);
+        ctx.lineWidth = strokeW;
+        ctx.strokeStyle = dotStrokeColor;
+
+        for (const sev of severityOrder) {
+          const group = severityGroups[sev];
+          if (!group.length) continue;
+          ctx.fillStyle = dotColor(sev);
+          ctx.globalAlpha = dotBaseOpacity({ severity: sev });
+
+          for (const r of group) {
+            const radius = dotBaseRadius(r) * invK;
+            ctx.beginPath();
+            ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+
+        ctx.restore();
+        ctx.globalAlpha = 1;
       }
 
       // ---- Zoom & pan ----
@@ -119,7 +189,10 @@
         .on("zoom", (event) => {
           currentTransform = event.transform;
           gRoot.attr("transform", currentTransform);
-          applyNonScalingDots();
+          gBaseRoot.attr("transform", currentTransform);
+          if (dotsVisible) {
+            renderDots(activeRows);
+          }
         });
 
       // Attach zoom to the SVG so hover events on marks still work.
@@ -187,8 +260,8 @@
 
       function filteredRows(state) {
         return (state.mode === "MONTH")
-          ? preparedRows.filter(r => r.monthIndex === state.monthIndex)
-          : preparedRows;
+          ? rowsByMonth[state.monthIndex] || []
+          : allRows;
       }
 
       function tooltipHide() {
@@ -241,45 +314,13 @@
         tooltipMove(event);
       }
 
-      function renderDots(rows) {
-        const sel = gDots.selectAll("circle")
-          .data(
-            rows,
-            d => `${d.longitude},${d.latitude},${d.monthIndex}` // stable key
-          );
-
-        sel.join(
-          enter => enter.append("circle")
-            .attr("r", dotBaseRadius)
-            .attr("opacity", dotBaseOpacity)
-            .attr("fill", d => dotColor(d.severity))
-            .attr("stroke", "#0b1f33")
-            .attr("stroke-opacity", 0.35)
-            .attr("stroke-width", dotBaseStrokeWidth)
-            .attr("cx", d => projection([d.longitude, d.latitude])[0])
-            .attr("cy", d => projection([d.longitude, d.latitude])[1]),
-
-          update => update
-            .attr("r", dotBaseRadius)
-            .attr("opacity", dotBaseOpacity)
-            .attr("fill", d => dotColor(d.severity))
-            .attr("stroke-width", dotBaseStrokeWidth)
-            .attr("cx", d => projection([d.longitude, d.latitude])[0])
-            .attr("cy", d => projection([d.longitude, d.latitude])[1]),
-
-          exit => exit.remove()
-        );
-
-        // If the user is currently zoomed, keep the dots the same on-screen size.
-        applyNonScalingDots();
-      }
-
       function renderPies(rows) {
         // Bin accidents into a coarse projected grid to reduce overlap in dense areas (e.g., London).
         const binMap = new Map();
 
         for (const r of rows) {
-          const [x, y] = projection([r.longitude, r.latitude]);
+          const x = r.x;
+          const y = r.y;
           const gx = Math.round(x / GRID_SIZE_PX);
           const gy = Math.round(y / GRID_SIZE_PX);
           const key = `${gx},${gy}`;
@@ -435,37 +476,27 @@
           // Enforce layer order every update (switching views can change z-order).
           gLand.lower();
           gInnerBorders.raise();
-          if (state.mapView === "DOTS") {
-            gDots.raise();
-            gInnerBorders.raise();
-          } else {
-            gPies.raise();
-          }
+          gPies.raise();
           gCoast.raise();
 
           if (state.mapView === "PIES") {
             // If geojson isn't ready yet, keep showing dots so the button doesn't look broken.
             if (!mapFeatures) {
               gPies.attr("display", "none");
-              gDots.attr("display", null);
               renderDots(rows);
               return;
             }
 
-            gDots.attr("display", "none");
             gPies.attr("display", null);
-            gDots.selectAll("circle").remove();
+            clearDots();
             const drewPies = renderPies(rows);
             // If, for any reason, no pies were drawn, fall back to dots so the view is never empty.
             if (!drewPies) {
               gPies.attr("display", "none");
-              gDots.attr("display", null);
               renderDots(rows);
             }
           } else {
             gPies.attr("display", "none");
-            gDots.attr("display", null);
-            gPies.selectAll("g.pie").remove();
             renderDots(rows);
           }
         }
@@ -474,3 +505,4 @@
   };
 
 })();
+
