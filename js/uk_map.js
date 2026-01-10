@@ -407,19 +407,22 @@
           const districtsSorted = Array.from(bucket.districtCounts.entries())
             .sort((a, b) => b[1] - a[1]);
           const primaryEntry = districtsSorted[0] || ["Unknown", 0];
+          const secondaryEntry = districtsSorted[1] || ["", 0];
           const topDistricts = districtsSorted.slice(0, 3).map(([name, count]) => ({ name, count }));
 
           const londonCount = districtsSorted.reduce((sum, [name, count]) =>
             sum + (isLondonDistrict(name) ? count : 0), 0);
           const topCount = primaryEntry[1];
           const topShare = (bucket.total > 0) ? (topCount / bucket.total) : 0;
+          const secondaryShare = (bucket.total > 0) ? (secondaryEntry[1] / bucket.total) : 0;
           const londonShare = (bucket.total > 0) ? (londonCount / bucket.total) : 0;
 
           let label = primaryEntry[0] || "Unknown";
           if (londonShare >= 0.55) {
             label = "London";
-          } else if (topShare < 0.55 && districtsSorted.length > 1) {
-            label = "Multiple areas";
+          } else if (topShare < 0.5 && secondaryShare >= topShare * 0.75 && secondaryEntry[0]) {
+            // If two districts have very similar counts, show both instead of a vague label.
+            label = `${primaryEntry[0]} & ${secondaryEntry[0]}`;
           }
 
           piesData.push({
