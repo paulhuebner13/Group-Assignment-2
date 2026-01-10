@@ -29,6 +29,7 @@
       const MIN_GRID_SIZE_PX = 18;
       const MAX_GRID_SIZE_PX = 160;
       const GRID_ZOOM_EXPONENT = 0.6;
+      const GRID_QUANTUM_PX = 2; // quantize grid to reduce jitter on minor zoom changes
 
       const container = d3.select(slotSelector);
       container.selectAll("*").remove();
@@ -133,10 +134,19 @@
 
       // Pre-project all points once; also bucket by month to avoid filtering 300k rows repeatedly.
       const rowsByMonth = Array.from({ length: 12 }, () => []);
+      const districtStats = new Map();
       const allRows = preparedRows.map(r => {
         const [x, y] = projection([r.longitude, r.latitude]);
         const row = { ...r, x, y };
         rowsByMonth[row.monthIndex].push(row);
+        const key = normalizeDistrict(row.district);
+        if (!districtStats.has(key)) {
+          districtStats.set(key, { name: row.district || "Unknown", sumX: 0, sumY: 0, count: 0, isLondon: isLondonDistrict(row.district) });
+        }
+        const stats = districtStats.get(key);
+        stats.sumX += x;
+        stats.sumY += y;
+        stats.count += 1;
         return row;
       });
 
@@ -153,13 +163,17 @@
       let dotsVisible = false;
       let pendingPieRefresh = false;
       let lastRenderedGridSize = BASE_GRID_SIZE_PX;
+      const labelMemory = new Map();
 
       const clampGridSize = (size) =>
         Math.max(MIN_GRID_SIZE_PX, Math.min(MAX_GRID_SIZE_PX, size));
 
       function effectiveGridSizePx() {
         const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
-        return clampGridSize(BASE_GRID_SIZE_PX / Math.max(Math.pow(k, GRID_ZOOM_EXPONENT), 0.0001));
+        const scaled = BASE_GRID_SIZE_PX / Math.max(Math.pow(k, GRID_ZOOM_EXPONENT), 0.0001);
+        const clamped = clampGridSize(scaled);
+        const quantized = Math.max(MIN_GRID_SIZE_PX, Math.min(MAX_GRID_SIZE_PX, Math.round(clamped / GRID_QUANTUM_PX) * GRID_QUANTUM_PX));
+        return quantized;
       }
 
       function requestPieRender(force = false) {
@@ -395,8 +409,8 @@
         bucket.districtCounts.set(district, (bucket.districtCounts.get(district) || 0) + 1);
       }
 
-      const piesData = [];
-      let maxTotal = 0;
+        const piesData = [];
+        let maxTotal = 0;
 
         for (const bucket of binMap.values()) {
           if (bucket.total <= 0) continue;
@@ -417,13 +431,65 @@
           const secondaryShare = (bucket.total > 0) ? (secondaryEntry[1] / bucket.total) : 0;
           const londonShare = (bucket.total > 0) ? (londonCount / bucket.total) : 0;
 
-          let label = primaryEntry[0] || "Unknown";
+          const bucketKey = `${gridSize.toFixed(2)}|${bucket.gx},${bucket.gy}`;
+          const prevLabel = labelMemory.get(bucketKey);
+
+          const centroidLabel = (() => {
+            // Prefer centroids of districts already in the bucket; fall back to the top district name.
+            const candidates = districtsSorted.length ? districtsSorted : [["Unknown", 0]];
+            let best = candidates[0][0];
+            let bestDist = Infinity;
+            for (const [name] of candidates) {
+              const norm = normalizeDistrict(name);
+              const stats = districtStats.get(norm);
+              if (!stats || stats.count === 0) continue;
+              const cx0 = stats.sumX / stats.count;
+              const cy0 = stats.sumY / stats.count;
+              const dx = cx0 - cx;
+              const dy = cy0 - cy;
+              const dist = dx * dx + dy * dy;
+              if (dist < bestDist) {
+                bestDist = dist;
+                best = stats.name || name;
+              }
+            }
+            return best || primaryEntry[0] || "Unknown";
+          })();
+
+          let label = primaryEntry[0] || centroidLabel || "Unknown";
           if (londonShare >= 0.55) {
-            label = "London";
-          } else if (topShare < 0.5 && secondaryShare >= topShare * 0.75 && secondaryEntry[0]) {
-            // If two districts have very similar counts, show both instead of a vague label.
+            // London dominates; show borough only if it strongly leads.
+            if (isLondonDistrict(primaryEntry[0]) && topShare >= 0.65) {
+              label = primaryEntry[0];
+            } else {
+              label = "London";
+            }
+          } else if (topShare < 0.5 && secondaryShare >= 0.35 && secondaryEntry[0]) {
+            // Two strong contributors: show both.
             label = `${primaryEntry[0]} & ${secondaryEntry[0]}`;
+          } else if (topShare < 0.4) {
+            // No clear leader: fall back to nearest centroid for geographic relevance.
+            label = centroidLabel;
           }
+
+          if (prevLabel && prevLabel.label) {
+            // Hysteresis: keep previous label unless the new leader clearly wins.
+            const prevIsLondon = prevLabel.label === "London";
+            if (prevLabel.label === label) {
+              // keep as-is
+            } else if (prevIsLondon && londonShare >= 0.45) {
+              label = prevLabel.label;
+            } else if (prevLabel.label === primaryEntry[0] && topShare >= Math.max(prevLabel.leadShare + 0.1, 0.45)) {
+              // new leader is significantly ahead; allow switch
+            } else if (prevLabel.label !== primaryEntry[0] && (topShare - (secondaryShare || 0)) < 0.12) {
+              // avoid jitter when leaders are close
+              label = prevLabel.label;
+            } else if (topShare < 0.5 && prevLabel.label) {
+              label = prevLabel.label;
+            }
+          }
+
+          labelMemory.set(bucketKey, { label, leadShare: topShare });
 
           piesData.push({
             key: `${bucket.gx},${bucket.gy}`,
@@ -498,7 +564,7 @@
               .attr("opacity", a => (a.data.key === "Fatal" ? 1 : 0.82))
               .attr("stroke", a => (a.data.key === "Fatal" ? "#ffffff" : "#0b1f33"))
               .attr("stroke-opacity", a => (a.data.key === "Fatal" ? 0.9 : 0.55))
-              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.7 : 0.4))
+              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.3 : 0.4))
               .attr("transform", a => arcTranslate(a))
               .attr("d", a => arcGen(a)),
             update => update
@@ -506,7 +572,7 @@
               .attr("opacity", a => (a.data.key === "Fatal" ? 1 : 0.82))
               .attr("stroke", a => (a.data.key === "Fatal" ? "#ffffff" : "#0b1f33"))
               .attr("stroke-opacity", a => (a.data.key === "Fatal" ? 0.9 : 0.55))
-              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.7 : 0.4))
+              .attr("stroke-width", a => (a.data.key === "Fatal" ? 0.3 : 0.4))
               .attr("transform", a => arcTranslate(a))
               .attr("d", a => arcGen(a)),
             exit => exit.remove()
