@@ -18,7 +18,9 @@ const allYearBtn = document.getElementById("allYearBtn");
 const slider = document.getElementById("monthSlider");
 const dashboard = document.getElementById("dashboard");
 const mapViewBtn = document.getElementById("mapViewBtn");
-const slightToggleBtn = document.getElementById("slightToggleBtn");
+const severityToggleBtn = document.getElementById("severityToggleBtn");
+const severityMenu = document.getElementById("severityMenu");
+const severityChecks = Array.from(document.querySelectorAll("[data-sev-check]"));
 
 const monthLabelsWrap = document.getElementById("monthLabels");
 const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel"));
@@ -34,7 +36,11 @@ const state = {
   monthIndex: 0,
   fullscreen: null,
   mapView: "DOTS",  // DOTS or PIES
-  showSlight: true
+  severityFilter: {
+    Fatal: true,
+    Serious: true,
+    Slight: true
+  }
 };
 
 // ---- Module instances ----
@@ -60,10 +66,18 @@ function applyUIState() {
     mapViewBtn.textContent = (state.mapView === "DOTS") ? "View: Points" : "View: Pie Charts";
     mapViewBtn.setAttribute("aria-pressed", state.mapView === "PIES" ? "true" : "false");
   }
-  if (slightToggleBtn) {
-    slightToggleBtn.textContent = state.showSlight ? "Slight: On" : "Slight: Off";
-    slightToggleBtn.setAttribute("aria-pressed", state.showSlight ? "false" : "true");
+  if (severityToggleBtn) {
+    const active = Object.entries(state.severityFilter || {}).filter(([, on]) => on).map(([k]) => k);
+    const label = (active.length === 3) ? "Severity: All"
+      : (active.length === 0) ? "Severity: None"
+        : "Severity: " + active.join(", ");
+    severityToggleBtn.textContent = label;
+    severityToggleBtn.setAttribute("aria-expanded", severityMenu && severityMenu.style.display === "flex" ? "true" : "false");
   }
+  severityChecks.forEach(chk => {
+    const sev = chk.dataset.sevCheck;
+    chk.checked = !!state.severityFilter[sev];
+  });
 
   monthLabelEls.forEach((el, idx) => {
     const active = (state.mode === "MONTH" && idx === state.monthIndex);
@@ -126,12 +140,33 @@ if (mapViewBtn) {
     updateVisuals();
   });
 }
+if (severityToggleBtn) {
+  const closeMenu = () => {
+    if (severityMenu) severityMenu.style.display = "none";
+    severityToggleBtn.setAttribute("aria-expanded", "false");
+  };
 
-if (slightToggleBtn) {
-  slightToggleBtn.addEventListener("click", () => {
-    state.showSlight = !state.showSlight;
-    applyUIState();
-    updateVisuals();
+  severityToggleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!severityMenu) return;
+    const isOpen = severityMenu.style.display === "flex";
+    severityMenu.style.display = isOpen ? "none" : "flex";
+    severityToggleBtn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+  });
+
+  severityChecks.forEach(chk => {
+    chk.addEventListener("change", () => {
+      const sev = chk.dataset.sevCheck;
+      state.severityFilter[sev] = chk.checked;
+      applyUIState();
+      updateVisuals();
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!severityMenu || !severityToggleBtn) return;
+    const within = severityMenu.contains(e.target) || severityToggleBtn.contains(e.target);
+    if (!within) closeMenu();
   });
 }
 

@@ -201,8 +201,9 @@
 
     .panelActions{
       display: flex;
-      gap: 8px;
-      align-items: center;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-end;
     }
 
     .panelTitle{
@@ -223,6 +224,50 @@
       cursor: pointer;
       font-weight: 800;
       font-size: 12px;
+    }
+
+    .mapActionRow{
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .sevDropdown{
+      position: relative;
+    }
+
+    .sevToggle{
+      min-width: 150px;
+      justify-content: space-between;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .sevMenu{
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      background: #2d2d2d;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      box-shadow: 0 8px 20px var(--shadow);
+      z-index: 20;
+    }
+
+    .sevMenu label{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
     }
 
     .vizSlot{
@@ -299,9 +344,18 @@
         <div class="panelHeader">
           <div class="panelTitle">UK Map</div>
           <div class="panelActions">
-            <button id="mapViewBtn" class="fsBtn" aria-pressed="false">View: Points</button>
-            <button id="slightToggleBtn" class="fsBtn" aria-pressed="false">Slight: On</button>
-            <button class="fsBtn" data-fs="map">Fullscreen</button>
+            <div class="mapActionRow">
+              <button id="mapViewBtn" class="fsBtn" aria-pressed="false">View: Points</button>
+              <button class="fsBtn" data-fs="map">Fullscreen</button>
+            </div>
+            <div class="sevDropdown">
+              <button id="severityToggleBtn" class="fsBtn sevToggle" aria-haspopup="true" aria-expanded="false">Severity: All</button>
+              <div id="severityMenu" class="sevMenu" role="menu">
+                <label><input type="checkbox" data-sev-check="Fatal" checked> Fatal</label>
+                <label><input type="checkbox" data-sev-check="Serious" checked> Serious</label>
+                <label><input type="checkbox" data-sev-check="Slight" checked> Slight</label>
+              </div>
+            </div>
           </div>
         </div>
         <div class="vizSlot" id="mapSlot"></div>

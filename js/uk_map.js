@@ -288,7 +288,7 @@
         const invK = 1 / k;
         const strokeW = dotBaseStrokeWidth * invK;
         const detailMode = k >= POINT_DETAIL_ZOOM;
-        const showSlight = lastState.showSlight !== false;
+        const sevFilter = lastState.severityFilter || { Fatal: true, Serious: true, Slight: true };
 
         const countScale = d3.scaleSqrt()
           .domain([1, Math.max(1, layout.maxTotal)])
@@ -331,10 +331,10 @@
 
         const renderFocusPoints = () => {
           for (const sev of severityOrder) {
-            if (!showSlight && sev === "Slight") continue;
             ctx.fillStyle = dotColor(sev);
             for (const p of layout.points) {
               if (p.severity !== sev) continue;
+              if (!sevFilter[sev]) continue;
               const base = dotBaseRadius({ severity: sev }) * invK;
               const rScale = detailMode
                 ? 1
@@ -383,10 +383,10 @@
         }
 
         for (const sev of severityOrder) {
-          if (!showSlight && sev === "Slight") continue;
           ctx.fillStyle = dotColor(sev);
           for (const p of layout.points) {
             if (p.severity !== sev) continue;
+            if (!sevFilter[sev]) continue;
             const base = dotBaseRadius({ severity: sev }) * invK;
             const r = base * countScale(p.total) * densityScale(p.densityTotal);
 
@@ -500,13 +500,12 @@
       });
 
       function filteredRows(state) {
-        const showSlight = state.showSlight !== false;
-        const monthIdx = state.monthIndex;
-        const byMonth = showSlight ? rowsByMonth : rowsByMonthNoSlight;
-        if (state.mode === "MONTH") {
-          return byMonth[monthIdx] || [];
-        }
-        return showSlight ? allRows : allRowsNoSlight;
+        const sevFilter = state.severityFilter || { Fatal: true, Serious: true, Slight: true };
+        const monthIdx = state.mode === "MONTH" ? state.monthIndex : null;
+        const base = state.mode === "MONTH"
+          ? rowsByMonth[monthIdx] || []
+          : allRows;
+        return base.filter(r => !!sevFilter[r.severity]);
       }
 
       function tooltipHide() {
