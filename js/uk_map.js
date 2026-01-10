@@ -31,6 +31,12 @@
       const GRID_ZOOM_EXPONENT = 0.6;
       const GRID_QUANTUM_PX = 2; // quantize grid to reduce jitter on minor zoom changes
 
+      // Point rendering LOD
+      const POINT_DETAIL_ZOOM = 1.55; // switch from density view to full dots
+      const DENSITY_ALPHA_MAX = 0.12;
+      const DENSITY_ALPHA_MIN = 0.025;
+      const DENSITY_RADIUS_MULT = 0.8;
+
       const container = d3.select(slotSelector);
       container.selectAll("*").remove();
       container.style("position", "relative");
@@ -134,11 +140,17 @@
 
       // Pre-project all points once; also bucket by month to avoid filtering 300k rows repeatedly.
       const rowsByMonth = Array.from({ length: 12 }, () => []);
+      const rowsByMonthNoSlight = Array.from({ length: 12 }, () => []);
       const districtStats = new Map();
+      const allRowsNoSlight = [];
       const allRows = preparedRows.map(r => {
         const [x, y] = projection([r.longitude, r.latitude]);
         const row = { ...r, x, y };
         rowsByMonth[row.monthIndex].push(row);
+        if (row.severity !== "Slight") {
+          rowsByMonthNoSlight[row.monthIndex].push(row);
+          allRowsNoSlight.push(row);
+        }
         const key = normalizeDistrict(row.district);
         if (!districtStats.has(key)) {
           districtStats.set(key, { name: row.district || "Unknown", sumX: 0, sumY: 0, count: 0, isLondon: isLondonDistrict(row.district) });
@@ -152,9 +164,11 @@
 
       // Radii chosen so Fatal > Serious > Slight for immediate visual priority.
       const dotBaseRadius = (d) => (d.severity === "Fatal") ? 3.6 : (d.severity === "Serious") ? 2.8 : 2.2;
-      const dotBaseOpacity = (d) => (d.severity === "Fatal") ? 0.95 : (d.severity === "Serious") ? 0.88 : 0.6;
+      const dotBaseOpacity = (d) => (d.severity === "Fatal") ? 0.95 : (d.severity === "Serious") ? 0.35 : 0.9;
       const dotBaseStrokeWidth = 0.35;
       const dotStrokeColor = "#0b1f33";
+      const dotDensityGridPx = 28;
+      const dotQuantPx = 0.5;
 
       // Keep track of zoom so we can keep dots a constant on-screen size.
       let currentTransform = d3.zoomIdentity;
@@ -164,6 +178,8 @@
       let pendingPieRefresh = false;
       let lastRenderedGridSize = BASE_GRID_SIZE_PX;
       const labelMemory = new Map();
+      let lastDotsRowsRef = null;
+      let currentDotLayout = null;
 
       const clampGridSize = (size) =>
         Math.max(MIN_GRID_SIZE_PX, Math.min(MAX_GRID_SIZE_PX, size));
@@ -194,21 +210,97 @@
         dotsVisible = false;
       }
 
-      function renderDots(rows) {
+      function buildDotLayout(rows) {
+        const aggMap = new Map();
+        for (const r of rows) {
+          const qx = Math.round(r.x / dotQuantPx) * dotQuantPx;
+          const qy = Math.round(r.y / dotQuantPx) * dotQuantPx;
+          const key = `${qx},${qy}`;
+          let bucket = aggMap.get(key);
+          if (!bucket) {
+            bucket = { x: qx, y: qy, Fatal: 0, Serious: 0, Slight: 0, total: 0 };
+            aggMap.set(key, bucket);
+          }
+          if (bucket[r.severity] !== undefined) bucket[r.severity] += 1;
+          bucket.total += 1;
+        }
+
+        const points = [];
+        let maxTotal = 0;
+        for (const bucket of aggMap.values()) {
+          maxTotal = Math.max(maxTotal, bucket.total);
+          const topSeverity = bucket.Fatal > 0 ? "Fatal" : bucket.Serious > 0 ? "Serious" : "Slight";
+          points.push({ ...bucket, severity: topSeverity });
+        }
+
+        // Compute density per grid cell using aggregated totals.
+        const densityBins = new Map();
+        for (const p of points) {
+          const gx = Math.floor(p.x / dotDensityGridPx);
+          const gy = Math.floor(p.y / dotDensityGridPx);
+          const key = `${gx},${gy}`;
+          let bin = densityBins.get(key);
+          if (!bin) {
+            bin = { total: 0, Fatal: 0, Serious: 0, Slight: 0 };
+            densityBins.set(key, bin);
+          }
+          bin.total += p.total;
+          bin.Fatal += p.Fatal;
+          bin.Serious += p.Serious;
+          bin.Slight += p.Slight;
+        }
+
+        let maxDensity = 0;
+        for (const bin of densityBins.values()) {
+          maxDensity = Math.max(maxDensity, bin.total);
+        }
+        for (const p of points) {
+          const gx = Math.floor(p.x / dotDensityGridPx);
+          const gy = Math.floor(p.y / dotDensityGridPx);
+          const binKey = `${gx},${gy}`;
+          const bin = densityBins.get(binKey);
+          const dTotal = bin ? bin.total : p.total;
+          p.densityTotal = dTotal;
+        }
+
+        return { points, maxTotal, maxDensity, densityBins, densityGridSize: dotDensityGridPx };
+      }
+
+      function getDotLayout(rows) {
+        if (rows === lastDotsRowsRef && currentDotLayout) return currentDotLayout;
+        currentDotLayout = buildDotLayout(rows);
+        lastDotsRowsRef = rows;
+        return currentDotLayout;
+      }
+
+      function renderDots(rows, reuseLayout = false) {
         activeRows = rows;
         canvas.style("opacity", 1);
         dotsVisible = true;
+
+        const layout = reuseLayout && currentDotLayout && rows === lastDotsRowsRef
+          ? currentDotLayout
+          : getDotLayout(rows);
 
         ctx.clearRect(0, 0, width, height);
 
         const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
         const invK = 1 / k;
         const strokeW = dotBaseStrokeWidth * invK;
+        const detailMode = k >= POINT_DETAIL_ZOOM;
+        const showSlight = lastState.showSlight !== false;
 
-        const severityGroups = { Fatal: [], Serious: [], Slight: [] };
-        for (const r of rows) {
-          if (severityGroups[r.severity]) severityGroups[r.severity].push(r);
-        }
+        const countScale = d3.scaleSqrt()
+          .domain([1, Math.max(1, layout.maxTotal)])
+          .range(detailMode ? [1, 2.0] : [1, 1.05]);
+
+        const densityScale = detailMode
+          ? d3.scaleSqrt()
+            .domain([1, Math.max(1, layout.maxDensity)])
+            .range([1, 1.25])
+          : null;
+
+        const mixColor = () => "rgb(128,162,205)"; // neutral blue-ish density to avoid orange wash
 
         ctx.save();
         ctx.translate(currentTransform.x, currentTransform.y);
@@ -216,16 +308,110 @@
         ctx.lineWidth = strokeW;
         ctx.strokeStyle = dotStrokeColor;
 
-        for (const sev of severityOrder) {
-          const group = severityGroups[sev];
-          if (!group.length) continue;
-          ctx.fillStyle = dotColor(sev);
-          ctx.globalAlpha = dotBaseOpacity({ severity: sev });
-
-          for (const r of group) {
-            const radius = dotBaseRadius(r) * invK;
+        const renderDensityLayer = () => {
+          ctx.save();
+          ctx.filter = "blur(8px)";
+          for (const [key, bin] of layout.densityBins.entries()) {
+            if (!bin.total) continue;
+            const [gx, gy] = key.split(",").map(Number);
+            const cx = (gx + 0.5) * (layout.densityGridSize || dotDensityGridPx);
+            const cy = (gy + 0.5) * (layout.densityGridSize || dotDensityGridPx);
+            const intensity = Math.sqrt(bin.total / Math.max(1, layout.maxDensity));
+            const alpha = DENSITY_ALPHA_MIN + intensity * (DENSITY_ALPHA_MAX - DENSITY_ALPHA_MIN);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = mixColor(bin);
+            const radius = (layout.densityGridSize || dotDensityGridPx) * DENSITY_RADIUS_MULT;
             ctx.beginPath();
-            ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.filter = "none";
+          ctx.restore();
+        };
+
+        const renderFocusPoints = () => {
+          for (const sev of severityOrder) {
+            if (!showSlight && sev === "Slight") continue;
+            ctx.fillStyle = dotColor(sev);
+            for (const p of layout.points) {
+              if (p.severity !== sev) continue;
+              const base = dotBaseRadius({ severity: sev }) * invK;
+              const rScale = detailMode
+                ? 1
+                : (sev === "Fatal" ? 0.65 : sev === "Serious" ? 0.6 : 0.55);
+              const r = base * countScale(p.total) * (densityScale ? densityScale(p.densityTotal) : 1) * rScale;
+
+              if (p.Fatal > 0) {
+                ctx.save();
+                ctx.lineWidth = Math.max(0.6, 1.0 * invK);
+                const haloAlpha = detailMode ? 0.22 : 0.14;
+                ctx.strokeStyle = `rgba(255,31,61,${haloAlpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r * 1.9, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+              } else if (p.Serious > 0) {
+                ctx.save();
+                ctx.lineWidth = Math.max(0.5, 0.9 * invK);
+                const haloAlpha = detailMode ? 0.18 : 0.12;
+                ctx.strokeStyle = `rgba(255,122,0,${haloAlpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, r * 1.6, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+              }
+
+              const baseAlpha = dotBaseOpacity({ severity: sev });
+              const alpha = detailMode
+                ? baseAlpha
+                : (sev === "Slight" ? baseAlpha * 0.32 : baseAlpha * 0.45);
+              ctx.globalAlpha = alpha;
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
+          }
+        };
+
+        if (!detailMode) {
+          renderDensityLayer();
+          renderFocusPoints();
+          ctx.restore();
+          ctx.globalAlpha = 1;
+          return;
+        }
+
+        for (const sev of severityOrder) {
+          if (!showSlight && sev === "Slight") continue;
+          ctx.fillStyle = dotColor(sev);
+          for (const p of layout.points) {
+            if (p.severity !== sev) continue;
+            const base = dotBaseRadius({ severity: sev }) * invK;
+            const r = base * countScale(p.total) * densityScale(p.densityTotal);
+
+            // Halo to emphasize higher severity
+            if (p.Fatal > 0) {
+              ctx.save();
+              ctx.lineWidth = Math.max(0.8, 1.4 * invK);
+              ctx.strokeStyle = "rgba(255,31,61,0.45)";
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, r * 1.9, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+            } else if (p.Serious > 0) {
+              ctx.save();
+              ctx.lineWidth = Math.max(0.6, 1.0 * invK);
+              ctx.strokeStyle = "rgba(255,122,0,0.32)";
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, r * 1.6, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            ctx.globalAlpha = dotBaseOpacity({ severity: sev }) * (detailMode ? 1 : 0.55);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           }
@@ -244,7 +430,7 @@
           gRoot.attr("transform", currentTransform);
           gBaseRoot.attr("transform", currentTransform);
           if (dotsVisible) {
-            renderDots(activeRows);
+            renderDots(activeRows, true);
           } else if (lastState.mapView === "PIES") {
             requestPieRender();
           }
@@ -314,9 +500,13 @@
       });
 
       function filteredRows(state) {
-        return (state.mode === "MONTH")
-          ? rowsByMonth[state.monthIndex] || []
-          : allRows;
+        const showSlight = state.showSlight !== false;
+        const monthIdx = state.monthIndex;
+        const byMonth = showSlight ? rowsByMonth : rowsByMonthNoSlight;
+        if (state.mode === "MONTH") {
+          return byMonth[monthIdx] || [];
+        }
+        return showSlight ? allRows : allRowsNoSlight;
       }
 
       function tooltipHide() {
