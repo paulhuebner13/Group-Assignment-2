@@ -239,10 +239,11 @@
 
     .sevToggle{
       min-width: 150px;
-      justify-content: space-between;
+      justify-content: center;
       display: flex;
       gap: 8px;
       align-items: center;
+      text-align: center;
     }
 
     .sevMenu{
@@ -345,16 +346,15 @@
           <div class="panelTitle">UK Map</div>
           <div class="panelActions">
             <div class="mapActionRow">
-              <button id="mapViewBtn" class="fsBtn" aria-pressed="false">View: Points</button>
-              <button class="fsBtn" data-fs="map">Fullscreen</button>
-            </div>
-            <div class="sevDropdown">
-              <button id="severityToggleBtn" class="fsBtn sevToggle" aria-haspopup="true" aria-expanded="false">Severity: All</button>
-              <div id="severityMenu" class="sevMenu" role="menu">
-                <label><input type="checkbox" data-sev-check="Fatal" checked> Fatal</label>
-                <label><input type="checkbox" data-sev-check="Serious" checked> Serious</label>
-                <label><input type="checkbox" data-sev-check="Slight" checked> Slight</label>
+              <div class="sevDropdown">
+                <button id="severityToggleBtn" class="fsBtn sevToggle" aria-haspopup="true" aria-expanded="false">Severity: All</button>
+                <div id="severityMenu" class="sevMenu" role="menu">
+                  <label><input type="checkbox" data-sev-check="Fatal" checked> Fatal</label>
+                  <label><input type="checkbox" data-sev-check="Serious" checked> Serious</label>
+                  <label><input type="checkbox" data-sev-check="Slight" checked> Slight</label>
+                </div>
               </div>
+              <button id="mapViewBtn" class="fsBtn" aria-pressed="false">View: Points</button>
             </div>
           </div>
         </div>
