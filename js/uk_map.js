@@ -24,8 +24,11 @@
     prepareRows,
 
     init({ slotSelector, preparedRows }) {
-      // Coarse grid size in projected pixels; larger size = fewer pie charts (helps de-clutter London).
-      const GRID_SIZE_PX = 48;
+      // Grid size in projected pixels; zoom exponent keeps pies from exploding into too many tiny bins.
+      const BASE_GRID_SIZE_PX = 64;
+      const MIN_GRID_SIZE_PX = 18;
+      const MAX_GRID_SIZE_PX = 160;
+      const GRID_ZOOM_EXPONENT = 0.6;
 
       const container = d3.select(slotSelector);
       container.selectAll("*").remove();
@@ -111,6 +114,19 @@
         .value(d => d.value)
         .sort((a, b) => severityOrder.indexOf(a.key) - severityOrder.indexOf(b.key));
 
+      const londonBoroughs = new Set([
+        "barking and dagenham", "barnet", "bexley", "brent", "bromley", "camden",
+        "croydon", "ealing", "enfield", "greenwich", "hackney",
+        "hammersmith and fulham", "haringey", "harrow", "havering", "hillingdon",
+        "hounslow", "islington", "kensington and chelsea", "kingston upon thames",
+        "lambeth", "lewisham", "merton", "newham", "redbridge", "richmond upon thames",
+        "southwark", "sutton", "tower hamlets", "waltham forest", "wandsworth",
+        "westminster", "city of london"
+      ]);
+
+      const normalizeDistrict = (d) => (d || "").trim().toLowerCase();
+      const isLondonDistrict = (d) => londonBoroughs.has(normalizeDistrict(d));
+
       // GeoJSON cached for drawing
       let mapFeatures = null;
       let lastState = { mode: "ALL", monthIndex: 0, mapView: "DOTS" };
@@ -132,8 +148,31 @@
 
       // Keep track of zoom so we can keep dots a constant on-screen size.
       let currentTransform = d3.zoomIdentity;
+      let currentRows = allRows;
       let activeRows = allRows;
       let dotsVisible = false;
+      let pendingPieRefresh = false;
+      let lastRenderedGridSize = BASE_GRID_SIZE_PX;
+
+      const clampGridSize = (size) =>
+        Math.max(MIN_GRID_SIZE_PX, Math.min(MAX_GRID_SIZE_PX, size));
+
+      function effectiveGridSizePx() {
+        const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
+        return clampGridSize(BASE_GRID_SIZE_PX / Math.max(Math.pow(k, GRID_ZOOM_EXPONENT), 0.0001));
+      }
+
+      function requestPieRender(force = false) {
+        if (pendingPieRefresh) return;
+        pendingPieRefresh = true;
+        requestAnimationFrame(() => {
+          pendingPieRefresh = false;
+          if (lastState.mapView !== "PIES" || !mapFeatures) return;
+          const nextGrid = effectiveGridSizePx();
+          if (!force && Math.abs(nextGrid - lastRenderedGridSize) < 0.25) return;
+          renderPies(currentRows || []);
+        });
+      }
 
       function clearDots() {
         ctx.clearRect(0, 0, width, height);
@@ -192,6 +231,8 @@
           gBaseRoot.attr("transform", currentTransform);
           if (dotsVisible) {
             renderDots(activeRows);
+          } else if (lastState.mapView === "PIES") {
+            requestPieRender();
           }
         });
 
@@ -296,7 +337,7 @@
       }
 
       function tooltipShowPie(event, pie) {
-        const region = pie.topDistrict || "Unknown";
+        const region = pie.label || "Unknown";
         const topList = (pie.topDistricts && pie.topDistricts.length)
           ? pie.topDistricts.map(d => `${d.name} (${d.count})`).join(", ")
           : "";
@@ -314,15 +355,19 @@
         tooltipMove(event);
       }
 
-      function renderPies(rows) {
-        // Bin accidents into a coarse projected grid to reduce overlap in dense areas (e.g., London).
+      function renderPies(rows, gridSizeOverride) {
+        tooltipHide();
+        const gridSize = gridSizeOverride || effectiveGridSizePx();
+        lastRenderedGridSize = gridSize;
+
+        // Bin accidents into a zoom-aware projected grid to reduce overlap and allow splitting while zooming.
         const binMap = new Map();
 
         for (const r of rows) {
           const x = r.x;
           const y = r.y;
-          const gx = Math.round(x / GRID_SIZE_PX);
-          const gy = Math.round(y / GRID_SIZE_PX);
+          const gx = Math.floor(x / gridSize);
+          const gy = Math.floor(y / gridSize);
           const key = `${gx},${gy}`;
 
           let bucket = binMap.get(key);
@@ -346,12 +391,12 @@
           if (bucket[r.severity] !== undefined) bucket[r.severity] += 1;
           bucket.total += 1;
 
-          const district = (r.district || "").trim() || "Unknown";
-          bucket.districtCounts.set(district, (bucket.districtCounts.get(district) || 0) + 1);
-        }
+        const district = (r.district || "").trim() || "Unknown";
+        bucket.districtCounts.set(district, (bucket.districtCounts.get(district) || 0) + 1);
+      }
 
-        const piesData = [];
-        let maxTotal = 0;
+      const piesData = [];
+      let maxTotal = 0;
 
         for (const bucket of binMap.values()) {
           if (bucket.total <= 0) continue;
@@ -361,8 +406,21 @@
 
           const districtsSorted = Array.from(bucket.districtCounts.entries())
             .sort((a, b) => b[1] - a[1]);
-          const topDistrict = districtsSorted.length ? districtsSorted[0][0] : "Unknown";
+          const primaryEntry = districtsSorted[0] || ["Unknown", 0];
           const topDistricts = districtsSorted.slice(0, 3).map(([name, count]) => ({ name, count }));
+
+          const londonCount = districtsSorted.reduce((sum, [name, count]) =>
+            sum + (isLondonDistrict(name) ? count : 0), 0);
+          const topCount = primaryEntry[1];
+          const topShare = (bucket.total > 0) ? (topCount / bucket.total) : 0;
+          const londonShare = (bucket.total > 0) ? (londonCount / bucket.total) : 0;
+
+          let label = primaryEntry[0] || "Unknown";
+          if (londonShare >= 0.55) {
+            label = "London";
+          } else if (topShare < 0.55 && districtsSorted.length > 1) {
+            label = "Multiple areas";
+          }
 
           piesData.push({
             key: `${bucket.gx},${bucket.gy}`,
@@ -372,17 +430,24 @@
             Serious: bucket.Serious,
             Slight: bucket.Slight,
             total: bucket.total,
-            topDistrict,
+            gridSize,
+            label,
             topDistricts
           });
         }
 
+        const k = (currentTransform && currentTransform.k) ? currentTransform.k : 1;
+        const invK = 1 / k;
+        const cellScreen = gridSize * k;
+        const minRadiusPx = Math.max(6, Math.min(18, cellScreen * 0.32));
+        const maxRadiusPx = Math.max(minRadiusPx + 2, Math.min(36, cellScreen * 0.66));
+
         const radiusScale = d3.scaleSqrt()
           .domain([1, Math.max(1, maxTotal)])
-          .range([7, 28]);
+          .range([minRadiusPx * invK, maxRadiusPx * invK]);
 
         const groups = gPies.selectAll("g.pie")
-          .data(piesData, d => d.key);
+          .data(piesData, d => `${d.gridSize.toFixed(2)}|${d.key}`);
 
         const groupsEnter = groups.enter()
           .append("g")
@@ -467,6 +532,7 @@
         update(state) {
           lastState = state;
           const rows = filteredRows(state);
+          currentRows = rows;
 
           // Inner borders are shown in BOTH views:
           // - DOTS: above points
@@ -505,4 +571,3 @@
   };
 
 })();
-
