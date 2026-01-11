@@ -28,7 +28,7 @@ const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel")
 const panels = {
   map: document.getElementById("mapPanel"),
   heatmap: document.getElementById("heatmapPanel"),
-  third: document.getElementById("thirdPanel")
+  barchart: document.getElementById("barchartPanel")
 };
 
 const state = {
@@ -47,7 +47,9 @@ const state = {
 let heatmapInstance = null;
 let preparedRows = [];
 let mapInstance = null;   
-let mapPreparedRows = []; 
+let mapPreparedRows = [];
+let barchartInstance = null;   
+let barchartPreparedRows = []; 
 
 // Configure paths here (only here!)
 const CONFIG = {
@@ -55,7 +57,8 @@ const CONFIG = {
   dataCsv: "data/Road Accident Data.csv",
   modules: {
     heatmap: "js/heatmap.js",
-    map: "js/uk_map.js" 
+    map: "js/uk_map.js",
+    barchart: "js/barchart.js"
   }
 };
 
@@ -99,6 +102,7 @@ function applyUIState() {
 function updateVisuals() {
   if (heatmapInstance) heatmapInstance.update(state);
   if (mapInstance) mapInstance.update(state);
+  if (barchartInstance) barchartInstance.update(state);
 }
 
 allYearBtn.addEventListener("click", () => {
@@ -177,6 +181,7 @@ if (severityToggleBtn) {
   // 2) Load heatmap module
   await loadScript(CONFIG.modules.heatmap);
   await loadScript(CONFIG.modules.map);
+  await loadScript(CONFIG.modules.barchart);
 
   // 3) Load data with d3.csv (now available)
   const raw = await d3.csv(CONFIG.dataCsv);
@@ -184,6 +189,7 @@ if (severityToggleBtn) {
   // 4) Prepare rows in module
   preparedRows = window.HeatmapModule.prepareRows(raw);
   mapPreparedRows = window.UKMapModule.prepareRows(raw);
+  barchartPreparedRows = window.barchartModule.prepareRows(raw);
 
 
   // 5) Create heatmap
@@ -195,6 +201,11 @@ if (severityToggleBtn) {
   mapInstance = window.UKMapModule.init({
   slotSelector: "#mapSlot",
   preparedRows: mapPreparedRows
+  });
+
+  mapInstance = window.barchartModule.init({
+  slotSelector: "#barchartSlot",
+  preparedRows: barchartPreparedRows
   });
 
   // 6) Apply fixed global scale once (stable scale)
