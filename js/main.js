@@ -28,7 +28,7 @@ const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel")
 const panels = {
   map: document.getElementById("mapPanel"),
   heatmap: document.getElementById("heatmapPanel"),
-  barchart: document.getElementById("barchartPanel")
+  third: document.getElementById("thirdPanel")
 };
 
 const state = {
@@ -203,9 +203,9 @@ if (severityToggleBtn) {
   preparedRows: mapPreparedRows
   });
 
-  mapInstance = window.barchartModule.init({
-  slotSelector: "#barchartSlot",
-  preparedRows: barchartPreparedRows
+  barchartInstance = window.barchartModule.init({
+    slotSelector: "#thirdSlot",
+    preparedRows: barchartPreparedRows
   });
 
   // 6) Apply fixed global scale once (stable scale)
