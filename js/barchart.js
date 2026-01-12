@@ -301,8 +301,9 @@
   }
 
   // Expose
-  window.ThirdModule = {
+  window.barchartModule = {
     prepareRows,
     init
   };
+
 })();
