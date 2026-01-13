@@ -171,29 +171,16 @@ const svg = viz.append("svg")
   `linear-gradient(to top, ${color.range()[0]}, ${color.range()[1]})`
 );
 
-
-
     const fmtAvg = d3.format(".2f");
-
-    function niceMax(v) {
-  const x = Math.max(0, v || 0);
-  if (x === 0) return 0;
-
-  const p = Math.pow(10, Math.floor(Math.log10(x)));
-  const n = x / p;
-  const step = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
-  return step * p;
-}
-
-
+    
     function setFixedScaleMax(v) {
-  const nice = niceMax(v);
-  maxAvg = Math.max(1e-9, nice);
+  maxAvg = Math.max(1e-9, v || 0);
   color.domain([0, maxAvg]);
 
-  // show max on legend
-  legendMaxLabel.text(fmtAvg(maxAvg));
+  // show rounded max on legend (e.g. 67 instead of 67.45)
+  legendMaxLabel.text(String(Math.round(maxAvg)));
 }
+
 
 
     function isFullscreenNow() {
