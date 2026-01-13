@@ -69,47 +69,68 @@
     const container = d3.select(slotSelector);
     container.selectAll("*").remove();
     
-    // Ensure absolute overlays (legend/tooltip) are positioned inside the slot
-container.style("position", "relative");
+    // --- Layout: heatmap left, legend right ---
+container
+  .style("display", "flex")
+  .style("gap", "10px")
+  .style("align-items", "stretch");
 
+// left: visualization area (svg + tooltip inside)
+const viz = container.append("div")
+  .style("flex", "1 1 auto")
+  .style("min-width", "0")
+  .style("height", "100%")
+  .style("position", "relative");
 
-    // ---------- Legend (top-right, inline styles) ----------
+// right: legend area
 const legend = container.append("div")
-  .style("position", "absolute")
-  .style("top", "10px")
-  .style("right", "10px")
-  .style("background", "rgba(0,0,0,0.35)")
-  .style("border", "1px solid rgba(255,255,255,0.15)")
-  .style("border-radius", "10px")
-  .style("padding", "8px 10px")
+  .style("flex", "0 0 90px")
+  .style("display", "flex")
+  .style("flex-direction", "column")
+  .style("align-items", "center")
+  .style("justify-content", "flex-start")
+  .style("gap", "6px")
+  .style("padding", "6px 4px")
   .style("color", "#ffffff")
   .style("font-size", "12px")
-  .style("z-index", 15)
+  .style("user-select", "none")
   .style("pointer-events", "none");
 
 legend.append("div")
   .style("font-weight", "800")
-  .style("margin-bottom", "6px")
-  .text("Accidents");
+  .style("margin-top", "2px")
+  .text("Avg/day");
 
+// top label (max) - will be updated in setFixedScaleMax()
+const legendMaxLabel = legend.append("div")
+  .style("font-weight", "800")
+  .style("opacity", "0.9")
+  .text("");
+
+// vertical gradient bar (green bottom, red top)
 const legendBar = legend.append("div")
-  .style("width", "160px")
-  .style("height", "12px")
+  .style("width", "18px")
+  .style("flex", "1 1 auto")
+  .style("min-height", "140px")
   .style("border-radius", "999px")
-  .style("border", "1px solid rgba(255,255,255,0.2)")
-  .style("margin-bottom", "6px");
+  .style("border", "1px solid rgba(255,255,255,0.25)");
 
+// bottom label (0)
 legend.append("div")
-  .style("display", "flex")
-  .style("justify-content", "space-between")
+  .style("font-weight", "800")
+  .style("opacity", "0.9")
+  .text("0");
+
+// helper text
+legend.append("div")
   .style("font-size", "11px")
-  .style("font-weight", "700")
-  .style("opacity", "0.85")
-  .html("<span>Few accidents</span><span>Many accidents</span>");
+  .style("opacity", "0.8")
+  .style("text-align", "center")
+  .html("Many<br>↑<br>Few");
 
 
-    // Tooltip
-    const tooltip = container.append("div")
+
+    const tooltip = viz.append("div")
       .attr("class", "tooltip")
       .style("position", "absolute")
       .style("pointer-events", "none")
@@ -122,9 +143,10 @@ legend.append("div")
       .style("transition", "opacity 0.08s linear")
       .style("z-index", 10);
 
-    const svg = container.append("svg")
+const svg = viz.append("svg")
       .attr("width", "100%")
       .attr("height", "100%");
+
 
     const g = svg.append("g");
     const gx = g.append("g");
@@ -146,16 +168,33 @@ legend.append("div")
 
     legendBar.style(
   "background",
-  `linear-gradient(to right, ${color.range()[0]}, ${color.range()[1]})`
+  `linear-gradient(to top, ${color.range()[0]}, ${color.range()[1]})`
 );
+
 
 
     const fmtAvg = d3.format(".2f");
 
+    function niceMax(v) {
+  const x = Math.max(0, v || 0);
+  if (x === 0) return 0;
+
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  const n = x / p;
+  const step = (n <= 1) ? 1 : (n <= 2) ? 2 : (n <= 5) ? 5 : 10;
+  return step * p;
+}
+
+
     function setFixedScaleMax(v) {
-      maxAvg = Math.max(1e-9, v);
-      color.domain([0, maxAvg]);
-    }
+  const nice = niceMax(v);
+  maxAvg = Math.max(1e-9, nice);
+  color.domain([0, maxAvg]);
+
+  // show max on legend
+  legendMaxLabel.text(fmtAvg(maxAvg));
+}
+
 
     function isFullscreenNow() {
       const panel = container.node().closest(".panel");
@@ -266,9 +305,10 @@ legend.append("div")
       for (const c of grid) gridMap.set(`${c.w}|${c.h}`, c);
       lastGridMap = gridMap;
 
-      const node = container.node();
-      const W = node.clientWidth || 10;
-      const H = node.clientHeight || 10;
+      const node = viz.node();
+const W = node.clientWidth || 10;
+const H = node.clientHeight || 10;
+
 
       const innerW = Math.max(10, W - margin.left - margin.right);
       const innerH = Math.max(10, H - margin.top - margin.bottom);
