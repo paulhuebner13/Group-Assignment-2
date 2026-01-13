@@ -69,6 +69,41 @@
     const container = d3.select(slotSelector);
     container.selectAll("*").remove();
 
+    // ---------- Legend (top-right, inline styles) ----------
+const legend = container.append("div")
+  .style("position", "absolute")
+  .style("top", "10px")
+  .style("right", "10px")
+  .style("background", "rgba(0,0,0,0.35)")
+  .style("border", "1px solid rgba(255,255,255,0.15)")
+  .style("border-radius", "10px")
+  .style("padding", "8px 10px")
+  .style("color", "#ffffff")
+  .style("font-size", "12px")
+  .style("z-index", 15)
+  .style("pointer-events", "none");
+
+legend.append("div")
+  .style("font-weight", "800")
+  .style("margin-bottom", "6px")
+  .text("Accidents");
+
+const legendBar = legend.append("div")
+  .style("width", "160px")
+  .style("height", "12px")
+  .style("border-radius", "999px")
+  .style("border", "1px solid rgba(255,255,255,0.2)")
+  .style("margin-bottom", "6px");
+
+legend.append("div")
+  .style("display", "flex")
+  .style("justify-content", "space-between")
+  .style("font-size", "11px")
+  .style("font-weight", "700")
+  .style("opacity", "0.85")
+  .html("<span>Few accidents</span><span>Many accidents</span>");
+
+
     // Tooltip
     const tooltip = container.append("div")
       .attr("class", "tooltip")
@@ -104,6 +139,12 @@
       .domain([0, 1])
       .range(["#2ecc71", "#8B0000"])
       .interpolate(d3.interpolateRgb);
+
+    legendBar.style(
+  "background",
+  `linear-gradient(to right, ${color.range()[0]}, ${color.range()[1]})`
+);
+
 
     const fmtAvg = d3.format(".2f");
 
