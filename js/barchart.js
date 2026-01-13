@@ -3,7 +3,7 @@
   const parseDate = d3.timeParse("%d/%m/%Y"); // like heatmap
 
   const UI = { text: "#ffffff", axis: "#ffffff" };
-  const COLORS = { Slight: "#4daf4a", Serious: "#ff9800", Fatal: "#e41a1c" };
+  const COLORS = { Slight: "#efeb2c", Serious: "#ff9800", Fatal: "#e41a1c" };
   function parseHour(s) {
     if (!s) return null;
     const m = String(s).trim().match(/^(\d{1,2}):(\d{2})/);
