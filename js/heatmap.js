@@ -315,7 +315,7 @@ const H = node.clientHeight || 10;
 
       clearOverlay();
 
-      // IMPORTANT: no transition here to avoid stale hover data issues
+      // IMPORTANT no transition here to avoid stale hover data issues
       const sel = cellsG.selectAll("rect").data(grid, d => `${d.w}|${d.h}`);
 
       sel.join(

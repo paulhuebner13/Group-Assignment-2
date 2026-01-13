@@ -1,6 +1,6 @@
 (function () {
   const SEVERITY_ORDER = ["Slight", "Serious", "Fatal"];
-  const parseDate = d3.timeParse("%d/%m/%Y"); // like heatmap.js
+  const parseDate = d3.timeParse("%d/%m/%Y"); // like heatmap
 
   const UI = { text: "#ffffff", axis: "#ffffff" };
   const COLORS = { Slight: "#4daf4a", Serious: "#ff9800", Fatal: "#e41a1c" };

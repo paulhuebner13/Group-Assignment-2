@@ -32,7 +32,7 @@ const panels = {
 };
 
 const state = {
-  mode: "ALL",      // ALL or MONTH
+  mode: "ALL",      // all or only MONTH
   monthIndex: 0,
   fullscreen: null,
   mapView: "DOTS",  // DOTS or PIES
