@@ -122,6 +122,7 @@
     tooltip = ensureTooltip(el);
 
     const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.width < 50 || rect.height < 50) return;
     const fullW = Math.max(600, rect.width || 700);
     const fullH = Math.max(360, rect.height || 420);
 
@@ -317,4 +318,5 @@
   // Expose
   window.barchartModule = { prepareRows, init };
 })();
+
 
