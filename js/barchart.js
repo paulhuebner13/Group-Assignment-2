@@ -159,7 +159,37 @@
       .attr("fill", UI.text)
       .text("Number of Accidents");
 
-    return { update };
+    function resize() {
+  if (!el || !svg || !g) return;
+
+  const rect = el.getBoundingClientRect();
+  const fullW = Math.max(600, rect.width || 700);
+  const fullH = Math.max(360, rect.height || 420);
+
+  width = fullW - margin.left - margin.right;
+  height = fullH - margin.top - margin.bottom;
+
+  svg.attr("width", fullW).attr("height", fullH);
+
+  // update axis group positions + legend position + x label position
+  g.select(".x-axis").attr("transform", `translate(0,${height})`);
+  g.select(".legend").attr("transform", `translate(${width + 16}, 6)`);
+
+  g.selectAll("text")
+    .filter(function () { return d3.select(this).text() === "Hour of the Day"; })
+    .attr("x", width / 2)
+    .attr("y", height + 34);
+
+  g.selectAll("text")
+    .filter(function () { return d3.select(this).text() === "Number of Accidents"; })
+    .attr("x", -height / 2);
+
+  // re-render with current state
+  update(window.__APP_STATE__ || {});
+}
+
+    return { update, resize };
+
   }
 
   // ---------- Public: update ----------
@@ -287,3 +317,4 @@
   // Expose
   window.barchartModule = { prepareRows, init };
 })();
+
