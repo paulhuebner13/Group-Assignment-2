@@ -132,20 +132,22 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
   btn.addEventListener("click", () => {
     const id = btn.dataset.fs;
     state.fullscreen = (state.fullscreen === id) ? null : id;
+
     applyUIState();
 
-    // make state accessible for resize() (quick fix)
+    // make current state available for barchart resize() (your barchart uses window.__APP_STATE__)
     window.__APP_STATE__ = state;
 
-    // wait until CSS layout applied, then resize charts that need it
+    // wait for CSS/grid to apply, then resize + update
     requestAnimationFrame(() => {
-      if (heatmapInstance && heatmapInstance.resize) heatmapInstance.resize();
-      if (mapInstance && mapInstance.resize) mapInstance.resize();
-      if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
-      updateVisuals();
+      requestAnimationFrame(() => {
+        if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
+        updateVisuals();
+      });
     });
   });
 });
+
 
 window.addEventListener("resize", () => {
   window.__APP_STATE__ = state;
