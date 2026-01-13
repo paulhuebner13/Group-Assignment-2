@@ -68,6 +68,10 @@
   function createHeatmap(slotSelector) {
     const container = d3.select(slotSelector);
     container.selectAll("*").remove();
+    
+    // Ensure absolute overlays (legend/tooltip) are positioned inside the slot
+container.style("position", "relative");
+
 
     // ---------- Legend (top-right, inline styles) ----------
 const legend = container.append("div")
