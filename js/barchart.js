@@ -1,7 +1,11 @@
 (function () {
   const DEFAULT_SEVERITIES = ["Slight", "Serious", "Fatal"];
-
-  // ---------- Helpers (robust column detection) ----------
+  
+  const UI = {
+    text: "#ffffff",
+    axis: "#ffffff",
+  };
+  
   function pickFirstKey(obj, candidates) {
     const keys = Object.keys(obj || {});
     const lowerMap = new Map(keys.map(k => [k.toLowerCase(), k]));
@@ -15,7 +19,6 @@
   function parseHourFromTimeStr(t) {
     if (!t) return NaN;
     const s = String(t).trim();
-    // Accept "HH:MM", "H:MM", "HH:MM:SS"
     const m = s.match(/^(\d{1,2})\s*:\s*\d{1,2}/);
     if (!m) return NaN;
     const h = Number(m[1]);
@@ -25,8 +28,6 @@
   function parseMonthIndex(value) {
     if (!value) return null;
     const s = String(value).trim();
-
-    // Try native Date parse 
     const d = new Date(s);
     if (!isNaN(d.getTime())) return d.getMonth();
     const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
@@ -36,8 +37,6 @@
     }
     return null;
   }
-
-  //Module internal state
   let el = null;
   let svg = null;
   let g = null;
@@ -46,13 +45,8 @@
   let height = 0;
   let margin = { top: 18, right: 140, bottom: 42, left: 56 };
 
-  let x = null;
-  let y = null;
-  let color = null;
-
   let prepared = [];
   let severities = DEFAULT_SEVERITIES.slice();
-
   let tooltip = null;
 
   function clearSlot(slot) {
@@ -61,7 +55,7 @@
 
   function ensureTooltip(slot) {
     const t = document.createElement("div");
-    t.className = "tooltip";
+    t.className = "tooltip";              
     t.style.opacity = "0";
     t.style.position = "absolute";
     t.style.left = "0px";
@@ -70,15 +64,14 @@
     return t;
   }
 
-  // Data prep
+  //Data preparation
   function prepareRows(raw) {
     if (!raw || raw.length === 0) return [];
 
-    // detect columns on first row
     const sample = raw[0];
 
     const timeKey = pickFirstKey(sample, ["Time", "Accident_Time", "AccidentTime", "time"]);
-    const sevKey = pickFirstKey(sample, ["Accident_Severity", "Severity", "accident_severity"]);
+    const sevKey  = pickFirstKey(sample, ["Accident_Severity", "Severity", "accident_severity"]);
     const dateKey = pickFirstKey(sample, ["Date", "Accident_Date", "AccidentDate", "DateTime", "Datetime"]);
 
     return raw
@@ -86,7 +79,7 @@
         const hour = parseHourFromTimeStr(timeKey ? r[timeKey] : null);
 
         let sev = sevKey ? String(r[sevKey] || "").trim() : "";
-        if (sev === "Fetal") sev = "Fatal"; // common typo you saw earlier
+        if (sev === "Fetal") sev = "Fatal"; // fix common typo
         if (!sev) return null;
 
         const monthIndex = dateKey ? parseMonthIndex(r[dateKey]) : null;
@@ -96,24 +89,23 @@
       .filter(d => d && !isNaN(d.hour));
   }
 
-  // Aggregation
+  
   function aggregate(rows, state) {
-    // Apply shared filters:
     const sevFilter = state?.severityFilter || { Fatal: true, Serious: true, Slight: true };
 
-    const filtered = rows.filter(d => {
-      const sevOk = !!sevFilter[d.severity];
-      if (!sevOk) return false;
+    // filter to selected monthIndex
+    const selectedMonth = Number.isFinite(state?.monthIndex) ? state.monthIndex : 0;
 
-      if (state?.mode === "MONTH") {
-        // If monthIndex exists in data: filter; otherwise ignore month filter
-        if (d.monthIndex === null) return true;
-        return d.monthIndex === state.monthIndex;
-      }
-      return true; // ALL
+    const filtered = rows.filter(d => {
+      if (!sevFilter[d.severity]) return false;
+
+      // If monthIndex is known in the data, enforce month filter.
+      // If monthIndex is missing in the row (null), we keep it (so chart still works).
+      if (d.monthIndex === null) return true;
+
+      return d.monthIndex === selectedMonth;
     });
 
-    // Ensure severity order consistent
     const present = new Set(filtered.map(d => d.severity));
     severities = DEFAULT_SEVERITIES.filter(s => present.has(s));
 
@@ -128,20 +120,19 @@
         byHour[d.hour][d.severity] += 1;
       }
     }
+
     return byHour;
   }
 
-  // Rendering
   function init({ slotSelector, preparedRows }) {
     el = document.querySelector(slotSelector);
-    if (!el) throw new Error("ThirdModule: slot not found: " + slotSelector);
+    if (!el) throw new Error("barchartModule: slot not found: " + slotSelector);
 
     clearSlot(el);
     el.style.position = "relative"; // for tooltip positioning
 
     tooltip = ensureTooltip(el);
 
-    // responsive-ish: read slot size
     const rect = el.getBoundingClientRect();
     const fullW = Math.max(600, rect.width || 700);
     const fullH = Math.max(360, rect.height || 420);
@@ -159,17 +150,17 @@
     g = svg.append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // axes groups
     g.append("g").attr("class", "x-axis").attr("transform", `translate(0,${height})`);
     g.append("g").attr("class", "y-axis");
 
-    // labels
+    //Labels
     g.append("text")
       .attr("class", "x-label")
       .attr("x", width / 2)
       .attr("y", height + 34)
       .attr("text-anchor", "middle")
       .style("font-size", "12px")
+      .attr("fill", UI.text)
       .text("Hour of the Day");
 
     g.append("text")
@@ -179,15 +170,20 @@
       .attr("transform", "rotate(-90)")
       .attr("text-anchor", "middle")
       .style("font-size", "12px")
+      .attr("fill", UI.text)
       .text("Number of Accidents");
 
-    // containers
+    //containers
     g.append("g").attr("class", "layers");
     g.append("g").attr("class", "legend").attr("transform", `translate(${width + 16}, 6)`);
 
-    return {
-      update: (state) => update(state)
-    };
+    return { update };
+  }
+
+  function styleAxisWhite(axisG) {
+    axisG.selectAll("text").attr("fill", UI.text);
+    axisG.selectAll(".domain").attr("stroke", UI.axis);
+    axisG.selectAll(".tick line").attr("stroke", UI.axis);
   }
 
   function update(state) {
@@ -196,18 +192,25 @@
     const data = aggregate(prepared, state);
 
     // scales
-    x = d3.scaleBand().domain(d3.range(24)).range([0, width]).padding(0.2);
+    const x = d3.scaleBand()
+      .domain(d3.range(24))
+      .range([0, width])
+      .padding(0.2);
+
     const maxTotal = d3.max(data, d => severities.reduce((sum, s) => sum + (d[s] || 0), 0)) || 0;
-    y = d3.scaleLinear().domain([0, maxTotal]).nice().range([height, 0]);
 
-    // colors: green / orange / red
+    const y = d3.scaleLinear()
+      .domain([0, maxTotal])
+      .nice()
+      .range([height, 0]);
+
     const sevColors = { Slight: "#4daf4a", Serious: "#ff9800", Fatal: "#e41a1c" };
-    color = d3.scaleOrdinal().domain(severities).range(severities.map(s => sevColors[s] || "#999"));
+    const color = d3.scaleOrdinal()
+      .domain(severities)
+      .range(severities.map(s => sevColors[s] || "#999"));
 
-    // stack
     const stacked = d3.stack().keys(severities)(data);
 
-    // draw layers
     const layerSel = g.select(".layers")
       .selectAll("g.layer")
       .data(stacked, d => d.key);
@@ -216,13 +219,11 @@
 
     const layerEnter = layerSel.enter()
       .append("g")
-      .attr("class", "layer")
-      .attr("fill", d => color(d.key));
+      .attr("class", "layer");
 
     const layers = layerEnter.merge(layerSel)
       .attr("fill", d => color(d.key));
 
-    // bars
     const rectSel = layers.selectAll("rect")
       .data(d => d, d => d.data.hour);
 
@@ -261,15 +262,21 @@
       .attr("height", d => y(d[0]) - y(d[1]));
 
     // axes
-    g.select(".x-axis")
+    const xAxisG = g.select(".x-axis")
       .transition().duration(250)
       .call(d3.axisBottom(x).tickFormat(d => `${d}:00`).tickValues(d3.range(0, 24, 2)));
 
-    g.select(".y-axis")
+    const yAxisG = g.select(".y-axis")
       .transition().duration(250)
       .call(d3.axisLeft(y));
 
-    // legend
+    // After axis render
+    setTimeout(() => {
+      styleAxisWhite(g.select(".x-axis"));
+      styleAxisWhite(g.select(".y-axis"));
+    }, 260);
+
+    // legenda
     const legend = g.select(".legend");
 
     const item = legend.selectAll("g.item")
@@ -291,19 +298,14 @@
     itemEnter.append("text")
       .attr("x", 20)
       .attr("y", 11)
-      .style("font-size", "12px");
+      .style("font-size", "12px")
+      .attr("fill", UI.text);
 
     const itemMerged = itemEnter.merge(item)
       .attr("transform", (d, i) => `translate(0, ${i * 22})`);
 
     itemMerged.select("rect").attr("fill", d => color(d));
-    itemMerged.select("text").text(d => d);
+    itemMerged.select("text").attr("fill", UI.text).text(d => d);
   }
-
-  // Expose
-  window.barchartModule = {
-    prepareRows,
-    init
-  };
-
+  window.barchartModule = { prepareRows, init };
 })();
