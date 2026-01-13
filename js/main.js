@@ -133,9 +133,20 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
     const id = btn.dataset.fs;
     state.fullscreen = (state.fullscreen === id) ? null : id;
     applyUIState();
-    updateVisuals();
+
+    // make state accessible for resize() (quick fix)
+    window.__APP_STATE__ = state;
+
+    // wait until CSS layout applied, then resize charts that need it
+    requestAnimationFrame(() => {
+      if (heatmapInstance && heatmapInstance.resize) heatmapInstance.resize();
+      if (mapInstance && mapInstance.resize) mapInstance.resize();
+      if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
+      updateVisuals();
+    });
   });
 });
+
 
 if (mapViewBtn) {
   mapViewBtn.addEventListener("click", () => {
