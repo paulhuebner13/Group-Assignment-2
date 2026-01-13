@@ -147,6 +147,14 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
   });
 });
 
+window.addEventListener("resize", () => {
+  window.__APP_STATE__ = state;
+  requestAnimationFrame(() => {
+    if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
+    updateVisuals();
+  });
+});
+
 
 if (mapViewBtn) {
   mapViewBtn.addEventListener("click", () => {
