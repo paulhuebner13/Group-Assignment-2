@@ -129,11 +129,11 @@
     g.select(".x-axis").attr("transform", `translate(0,${height})`);
     g.select(".x-label")
       .attr("x", width / 2)
-      .attr("y", height + 34);
+      .attr("y", height + 28);
 
     g.select(".y-label")
       .attr("x", -height / 2)
-      .attr("y", -42);
+      .attr("y", -52);
 
     g.select(".legend").attr("transform", `translate(${width + 16}, 6)`);
   }
