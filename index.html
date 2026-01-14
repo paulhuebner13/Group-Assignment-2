@@ -199,6 +199,37 @@
       min-width: 0;
     }
 
+    .panelHeaderActions{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .panelFilterGroup{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panelFilterGroup label{
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .panelFilterSelect{
+      height: 28px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #2d2d2d;
+      color: var(--text);
+      padding: 0 8px;
+      font-weight: 700;
+    }
+
     .panelActions{
       display: flex;
       flex-direction: column;
@@ -376,7 +407,17 @@
       <section class="panel" id="thirdPanel">
         <div class="panelHeader">
           <div class="panelTitle">Barchart visualization</div>
-          <button class="fsBtn" data-fs="third">Fullscreen</button>
+          <div class="panelHeaderActions">
+            <div class="panelFilterGroup">
+              <label for="roadSurfaceFilter">Road surface</label>
+              <select id="roadSurfaceFilter" class="panelFilterSelect"></select>
+            </div>
+            <div class="panelFilterGroup">
+              <label for="roadTypeFilter">Road type</label>
+              <select id="roadTypeFilter" class="panelFilterSelect"></select>
+            </div>
+            <button class="fsBtn" data-fs="third">Fullscreen</button>
+          </div>
         </div>
         <div class="vizSlot" id="thirdSlot"></div>
       </section>
@@ -397,4 +438,3 @@
 
 </body>
 </html>
-

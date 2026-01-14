@@ -12,6 +12,37 @@
     return Number.isFinite(h) && h >= 0 && h <= 23 ? h : null;
   }
 
+  function normalizeFilterValue(value) {
+    const v = (value ?? "").toString().trim();
+    return v.length ? v : "Unknown";
+  }
+
+  function buildFilterOptions(rows, key) {
+    const counts = new Map();
+    for (const row of rows) {
+      const value = normalizeFilterValue(row[key]);
+      if (value === "Unknown") continue;
+      counts.set(value, (counts.get(value) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }
+
+  function populateFilterSelect(selectEl, items, allLabel) {
+    if (!selectEl) return;
+    selectEl.innerHTML = "";
+    const allOpt = document.createElement("option");
+    allOpt.value = "All";
+    allOpt.textContent = allLabel;
+    selectEl.appendChild(allOpt);
+    items.forEach(([value]) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = value;
+      selectEl.appendChild(opt);
+    });
+  }
+
   function normalizeSeverity(sev) {
     if (!sev) return null;
     let s = String(sev).trim();
@@ -53,6 +84,10 @@
   let tooltip = null;
 
   let lastState = { mode: "ALL", monthIndex: 0, severityFilter: { Fatal: true, Serious: true, Slight: true } };
+  let roadSurfaceFilter = "All";
+  let roadTypeFilter = "All";
+  let roadSurfaceSelect = null;
+  let roadTypeSelect = null;
 
   let resizeObserver = null;
 
@@ -64,11 +99,15 @@
       const h = parseHour(r["Time"]);
       const sev = normalizeSeverity(r["Accident_Severity"]);
       if (!d || h === null || !sev) continue;
+      const surface = normalizeFilterValue(r["Road_Surface_Conditions"]);
+      const roadType = normalizeFilterValue(r["Road_Type"]);
 
       out.push({
         monthIndex: d.getMonth(), // 0..11
         hour: h,                  // 0..23
-        severity: sev
+        severity: sev,
+        roadSurface: surface,
+        roadType
       });
     }
     return out;
@@ -105,6 +144,8 @@
 
     const filtered = rows.filter(r => {
       if (!sevFilter[r.severity]) return false;
+      if (roadSurfaceFilter !== "All" && r.roadSurface !== roadSurfaceFilter) return false;
+      if (roadTypeFilter !== "All" && r.roadType !== roadTypeFilter) return false;
 
       if (state?.mode === "MONTH") {
         return r.monthIndex === state.monthIndex;
@@ -134,6 +175,33 @@
     if (!el) throw new Error("barchartModule: slot not found: " + slotSelector);
 
     preparedRows = rows || [];
+
+    roadSurfaceSelect = document.getElementById("roadSurfaceFilter");
+    roadTypeSelect = document.getElementById("roadTypeFilter");
+
+    if (roadSurfaceSelect) {
+      populateFilterSelect(
+        roadSurfaceSelect,
+        buildFilterOptions(preparedRows, "roadSurface"),
+        "All surfaces"
+      );
+      roadSurfaceSelect.addEventListener("change", () => {
+        roadSurfaceFilter = roadSurfaceSelect.value;
+        update(lastState);
+      });
+    }
+
+    if (roadTypeSelect) {
+      populateFilterSelect(
+        roadTypeSelect,
+        buildFilterOptions(preparedRows, "roadType"),
+        "All road types"
+      );
+      roadTypeSelect.addEventListener("change", () => {
+        roadTypeFilter = roadTypeSelect.value;
+        update(lastState);
+      });
+    }
 
     clearSlot(el);
     el.style.position = "relative";
