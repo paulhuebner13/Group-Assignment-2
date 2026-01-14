@@ -64,6 +64,7 @@ const CONFIG = {
 
 function applyUIState() {
   allYearBtn.setAttribute("aria-pressed", state.mode === "ALL" ? "true" : "false");
+  slider.classList.toggle("isInactive", state.mode === "ALL");
 
   if (mapViewBtn) {
     mapViewBtn.textContent = (state.mapView === "DOTS") ? "View: Points" : "View: Pie Charts";

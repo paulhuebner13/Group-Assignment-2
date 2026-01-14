@@ -76,7 +76,7 @@
   let svg = null;
   let g = null;
 
-  const margin = { top: 18, right: 140, bottom: 42, left: 56 };
+  const margin = { top: 14, right: 140, bottom: 56, left: 72 };
   let width = 0;
   let height = 0;
 
