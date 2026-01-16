@@ -41,6 +41,19 @@
       padding: 12px;
     }
 
+    :root{
+  --uiScale: 0.7;
+}
+
+.app{
+  transform: scale(var(--uiScale));
+  transform-origin: top left;
+
+  width: calc(100vw / var(--uiScale));
+  height: calc(100vh / var(--uiScale));
+}
+
+
     .header{
       background: var(--panel);
       border: 1px solid var(--border);
@@ -436,15 +449,6 @@
 
   </div>
 
-<!-- D3 zuerst -->
-<script src="https://d3js.org/d3.v7.min.js"></script>
-
-<!-- deine Visualisierungs-Module -->
-<script src="js/heatmap.js" defer></script>
-<script src="js/uk_map.js" defer></script>
-<script src="js/barchart.js" defer></script>
-
-<!-- Orchestrator -->
 <script src="js/main.js" defer></script>
 
 </body>

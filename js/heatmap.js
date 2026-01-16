@@ -121,12 +121,6 @@ legend.append("div")
   .style("opacity", "0.9")
   .text("0");
 
-// helper text
-legend.append("div")
-  .style("font-size", "11px")
-  .style("opacity", "0.8")
-  .style("text-align", "center")
-  .html("Many<br>↑<br>Few");
 
 
 

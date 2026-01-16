@@ -141,22 +141,27 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
 
     // wait for CSS/grid to apply, then resize + update
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
-        updateVisuals();
-      });
-    });
+  if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
+  requestAnimationFrame(() => {
+    updateVisuals();
+  });
+});
+
   });
 });
 
 
+let resizeRaf = 0;
+
 window.addEventListener("resize", () => {
   window.__APP_STATE__ = state;
-  requestAnimationFrame(() => {
+  if (resizeRaf) cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => {
     if (barchartInstance && barchartInstance.resize) barchartInstance.resize();
     updateVisuals();
   });
 });
+
 
 
 if (mapViewBtn) {
