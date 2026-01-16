@@ -7,17 +7,21 @@
     return rawRows.map(r => {
       const d = parseDate(r["Accident Date"]);
       return {
-        longitude: +r.Longitude,
-        latitude: +r.Latitude,
-        severity: r.Accident_Severity,
-        district: r["Local_Authority_(District)"] || "",
-        monthIndex: d ? d.getMonth() : null
-      };
+  longitude: +r.Longitude,
+  latitude: +r.Latitude,
+  severity: r.Accident_Severity,
+  district: r["Local_Authority_(District)"] || "",
+  monthIndex: d ? d.getMonth() : null,
+  weekdayIndex: d ? ((d.getDay() + 6) % 7) : null // Mon=0 ... Sun=6
+};
+
     }).filter(d =>
-      Number.isFinite(d.longitude) &&
-      Number.isFinite(d.latitude) &&
-      d.monthIndex !== null
-    );
+  Number.isFinite(d.longitude) &&
+  Number.isFinite(d.latitude) &&
+  d.monthIndex !== null &&
+  d.weekdayIndex !== null
+);
+
   }
 
   window.UKMapModule = {
@@ -500,13 +504,24 @@
       });
 
       function filteredRows(state) {
-        const sevFilter = state.severityFilter || { Fatal: true, Serious: true, Slight: true };
-        const monthIdx = state.mode === "MONTH" ? state.monthIndex : null;
-        const base = state.mode === "MONTH"
-          ? rowsByMonth[monthIdx] || []
-          : allRows;
-        return base.filter(r => !!sevFilter[r.severity]);
-      }
+  const sevFilter = state.severityFilter || { Fatal: true, Serious: true, Slight: true };
+  const monthIdx = state.mode === "MONTH" ? state.monthIndex : null;
+
+  const base = state.mode === "MONTH"
+    ? (rowsByMonth[monthIdx] || [])
+    : allRows;
+
+  return base.filter(r => {
+    if (!sevFilter[r.severity]) return false;
+
+    if (state.weekdayFilter !== null && state.weekdayFilter !== undefined) {
+      if (r.weekdayIndex !== state.weekdayFilter) return false;
+    }
+
+    return true;
+  });
+}
+
 
       function tooltipHide() {
         tooltip.style("opacity", 0);

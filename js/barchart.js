@@ -97,12 +97,14 @@
       if (!d || h === null || !sev) continue;
 
       out.push({
-        monthIndex: d.getMonth(),
-        hour: h, // 0..23
-        severity: sev,
-        roadSurface: normalizeFilterValue(r["Road_Surface_Conditions"]),
-        roadType: normalizeFilterValue(r["Road_Type"])
-      });
+  monthIndex: d.getMonth(),
+  weekdayIndex: (d.getDay() + 6) % 7, // Mon=0 ... Sun=6
+  hour: h,
+  severity: sev,
+  roadSurface: normalizeFilterValue(r["Road_Surface_Conditions"]),
+  roadType: normalizeFilterValue(r["Road_Type"])
+});
+
     }
     return out;
   }
@@ -188,13 +190,18 @@
     const sevFilter = state?.severityFilter || { Fatal: true, Serious: true, Slight: true };
 
     const filtered = rows.filter(r => {
-      if (!sevFilter[r.severity]) return false;
-      if (roadSurfaceFilter !== "All" && r.roadSurface !== roadSurfaceFilter) return false;
-      if (roadTypeFilter !== "All" && r.roadType !== roadTypeFilter) return false;
+  if (!sevFilter[r.severity]) return false;
+  if (roadSurfaceFilter !== "All" && r.roadSurface !== roadSurfaceFilter) return false;
+  if (roadTypeFilter !== "All" && r.roadType !== roadTypeFilter) return false;
 
-      if (state?.mode === "MONTH") return r.monthIndex === state.monthIndex;
-      return true;
-    });
+  if (state?.weekdayFilter !== null && state?.weekdayFilter !== undefined) {
+    if (r.weekdayIndex !== state.weekdayFilter) return false;
+  }
+
+  if (state?.mode === "MONTH") return r.monthIndex === state.monthIndex;
+  return true;
+});
+
 
     const present = new Set(filtered.map(d => d.severity));
     const severities = SEVERITY_ORDER.filter(s => present.has(s));
@@ -215,31 +222,46 @@
   }
 
   function tooltipMove(event) {
-    const rect = el.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+  const rect = el.getBoundingClientRect();
 
-    const tipW = tooltip.offsetWidth || 0;
-    const tipH = tooltip.offsetHeight || 0;
+  const unscaledW = el.offsetWidth || rect.width || 1;
+  const unscaledH = el.offsetHeight || rect.height || 1;
 
-    const pad = 12;
-    const edge = 8;
+  const scaleX = rect.width / unscaledW;
+  const scaleY = rect.height / unscaledH;
 
-    let left = x + pad;
-    let top = y + pad;
+  // mouse position in unscaled coords
+  const mouseX = (event.clientX - rect.left) / (scaleX || 1);
+  const mouseY = (event.clientY - rect.top) / (scaleY || 1);
 
-    const maxLeft = rect.width - tipW - edge;
-    const maxTop = rect.height - tipH - edge;
+  const tipW = tooltip.offsetWidth || 0;
+  const tipH = tooltip.offsetHeight || 0;
 
-    if (left > maxLeft) left = x - pad - tipW;
-    if (top > maxTop) top = y - pad - tipH;
+  const offset = 22;  // distance from cursor (increase if needed)
+  const edgePad = 8;
 
-    left = Math.max(edge, Math.min(left, maxLeft));
-    top = Math.max(edge, Math.min(top, maxTop));
+  // Prefer right + down
+  let left = mouseX + offset;
+  let top = mouseY + offset;
 
-    tooltip.style.left = left + "px";
-    tooltip.style.top = top + "px";
+  // Flip if near right edge
+  if (left + tipW + edgePad > unscaledW) {
+    left = mouseX - offset - tipW;
   }
+
+  // Flip if near bottom edge
+  if (top + tipH + edgePad > unscaledH) {
+    top = mouseY - offset - tipH;
+  }
+
+  // Clamp
+  left = Math.max(edgePad, Math.min(left, unscaledW - tipW - edgePad));
+  top = Math.max(edgePad, Math.min(top, unscaledH - tipH - edgePad));
+
+  tooltip.style.left = left + "px";
+  tooltip.style.top = top + "px";
+}
+
 
   function render(state, fromResize = false) {
     if (!rootG) return;
@@ -309,7 +331,8 @@
       .on("mouseenter", (event, d) => {
         const hour = d.data.hour;
         const total = safeSevs.reduce((sum, s) => sum + (d.data[s] || 0), 0);
-        const details = safeSevs.map(s => `${s}: ${d.data[s] || 0}`).join("<br>");
+const tooltipOrder = ["Fatal", "Serious", "Slight"].filter(s => safeSevs.includes(s));
+const details = tooltipOrder.map(s => `${s}: ${d.data[s] || 0}`).join("<br>");
 
         tooltip.innerHTML =
           `<strong>Hour:</strong> ${hour}:00<br>` +

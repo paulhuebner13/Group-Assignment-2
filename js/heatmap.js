@@ -137,15 +137,29 @@ legend.append("div")
       .style("z-index", 10);
 
 const svg = viz.append("svg")
-      .attr("width", "100%")
-      .attr("height", "100%");
+  .attr("width", "100%")
+  .attr("height", "100%");
+
+const g = svg.append("g");
+
+// axes
+const gx = g.append("g");
+const gy = g.append("g");
+
+// highlight row (visual only)
+const rowHighlightG = g.append("g")
+  .attr("pointer-events", "none");
+
+// cells (tooltips live here)
+const cellsG = g.append("g");
 
 
-    const g = svg.append("g");
-    const gx = g.append("g");
-    const gy = g.append("g");
-    const cellsG = g.append("g");
-    const overlayTextG = g.append("g").attr("pointer-events", "none");
+
+// overlay numbers (fullscreen helper)
+const overlayTextG = g.append("g")
+  .attr("pointer-events", "none");
+
+
 
     const margin = { top: 16, right: 10, bottom: 40, left: 44 };
     const x = d3.scaleBand().domain(d3.range(24));
@@ -196,33 +210,53 @@ const svg = viz.append("svg")
       tooltip.style("opacity", 0);
     }
 
-    // overflow-safe tooltip positioning
     function tooltipMove(event) {
-      const rect = container.node().getBoundingClientRect();
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
+  // Tooltip is positioned inside `viz` (which might be scaled via CSS transform).
+  // We convert mouse coords back to the unscaled coordinate system.
 
-      const tipNode = tooltip.node();
-      const tipW = tipNode.offsetWidth || 0;
-      const tipH = tipNode.offsetHeight || 0;
+  const vizEl = viz.node();
+  const rect = vizEl.getBoundingClientRect();
 
-      const pad = 12;
-      const edgePad = 8;
+  const unscaledW = vizEl.offsetWidth || rect.width || 1;
+  const unscaledH = vizEl.offsetHeight || rect.height || 1;
 
-      let xPos = mouseX + pad;
-      let yPos = mouseY + pad;
+  // scale factor (1.0 if no transform scaling)
+  const scaleX = rect.width / unscaledW;
+  const scaleY = rect.height / unscaledH;
 
-      const maxX = rect.width - tipW - edgePad;
-      const maxY = rect.height - tipH - edgePad;
+  // mouse position in unscaled coordinates
+  const mouseX = (event.clientX - rect.left) / (scaleX || 1);
+  const mouseY = (event.clientY - rect.top) / (scaleY || 1);
 
-      if (xPos > maxX) xPos = mouseX - pad - tipW;
-      if (yPos > maxY) yPos = mouseY - pad - tipH;
+  const tipNode = tooltip.node();
+  const tipW = tipNode.offsetWidth || 0;
+  const tipH = tipNode.offsetHeight || 0;
 
-      xPos = Math.max(edgePad, Math.min(xPos, maxX));
-      yPos = Math.max(edgePad, Math.min(yPos, maxY));
+  const offset = 24;  // fixed distance from cursor
+  const edgePad = 8;
 
-      tooltip.style("left", `${xPos}px`).style("top", `${yPos}px`);
-    }
+  // Prefer: right + down
+  let xPos = mouseX + offset;
+  let yPos = mouseY + offset;
+
+  // Flip horizontally if too close to right edge
+  if (xPos + tipW + edgePad > unscaledW) {
+    xPos = mouseX - offset - tipW;
+  }
+
+  // Flip vertically if too close to bottom edge
+  if (yPos + tipH + edgePad > unscaledH) {
+    yPos = mouseY - offset - tipH;
+  }
+
+  // Clamp inside the viz area
+  xPos = Math.max(edgePad, Math.min(xPos, unscaledW - tipW - edgePad));
+  yPos = Math.max(edgePad, Math.min(yPos, unscaledH - tipH - edgePad));
+
+  tooltip.style("left", `${xPos}px`).style("top", `${yPos}px`);
+}
+
+
 
     function clearOverlay() {
       overlayTextG.selectAll("*").remove();
@@ -277,8 +311,13 @@ const svg = viz.append("svg")
     let lastGrid = null;
     let lastGridMap = null;
 
-    function render(grid) {
+    function render(grid, state) {
+
       lastGrid = grid;
+
+      // keep the last state so click handlers can toggle
+lastState = state || lastState;
+
 
       // Build map from THIS grid (single source of truth)
       const gridMap = new Map();
@@ -301,12 +340,47 @@ const H = node.clientHeight || 10;
         .call(d3.axisBottom(x).tickValues(d3.range(0,24,2)).tickFormat(d => String(d).padStart(2,"0")));
       gy.call(d3.axisLeft(y).tickFormat(d => WEEKDAYS[d]));
 
+      // Make weekday labels clickable (Mon..Sun)
+gy.selectAll(".tick text")
+  .style("cursor", "pointer")
+  .style("pointer-events", "all")
+  .on("click", (event, w) => {
+    const current = (lastState && lastState.weekdayFilter !== null && lastState.weekdayFilter !== undefined)
+      ? lastState.weekdayFilter
+      : null;
+
+    const next = (current === w) ? null : w;
+
+    window.dispatchEvent(new CustomEvent("weekdayFilterChange", {
+      detail: { weekdayIndex: next }
+    }));
+  });
+
+
       gx.selectAll("text").attr("fill", "#d8d8d8").attr("font-size", 10);
-      gy.selectAll("text").attr("fill", "#d8d8d8").attr("font-size", 10);
+gy.selectAll("text")
+  .attr("font-size", 10)
+  .attr("fill", (d) => {
+    const active = (lastState && lastState.weekdayFilter !== null && lastState.weekdayFilter !== undefined)
+      ? lastState.weekdayFilter
+      : null;
+    return (active === d) ? "#ffffff" : "#d8d8d8";
+  })
+  .attr("font-weight", (d) => {
+    const active = (lastState && lastState.weekdayFilter !== null && lastState.weekdayFilter !== undefined)
+      ? lastState.weekdayFilter
+      : null;
+    return (active === d) ? 900 : 400;
+  });
       gx.selectAll("path,line").attr("stroke", "#666");
       gy.selectAll("path,line").attr("stroke", "#666");
+      // Make sure axis labels are clickable but do not block the heatmap area
+gy.attr("pointer-events", "all");
+cellsG.attr("pointer-events", "all");
+
 
       clearOverlay();
+
 
       // IMPORTANT no transition here to avoid stale hover data issues
       const sel = cellsG.selectAll("rect").data(grid, d => `${d.w}|${d.h}`);
@@ -344,8 +418,9 @@ const H = node.clientHeight || 10;
     }
 
     const ro = new ResizeObserver(() => {
-      if (lastGrid) render(lastGrid);
-    });
+  if (lastGrid) render(lastGrid, lastState);
+});
+
     ro.observe(container.node());
 
     return { setFixedScaleMax, render };
@@ -382,7 +457,8 @@ const H = node.clientHeight || 10;
             : preparedRows;
 
           const grid = aggregateAvgPerDay(rows);
-          hm.render(grid);
+hm.render(grid, state);
+
         }
       };
     }

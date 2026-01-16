@@ -34,6 +34,7 @@ const panels = {
 const state = {
   mode: "ALL",      // all or only MONTH
   monthIndex: 0,
+  weekdayFilter: null, // null = all days, else 0..6 (Mon..Sun)
   fullscreen: null,
   mapView: "DOTS",  // DOTS or PIES
   severityFilter: {
@@ -42,6 +43,7 @@ const state = {
     Slight: true
   }
 };
+
 
 // ---- Module instances ----
 let heatmapInstance = null;
@@ -105,6 +107,14 @@ function updateVisuals() {
   if (mapInstance) mapInstance.update(state);
   if (barchartInstance) barchartInstance.update(state);
 }
+
+// Heatmap sends this event when user clicks a weekday row
+window.addEventListener("weekdayFilterChange", (e) => {
+  state.weekdayFilter = (e && e.detail) ? e.detail.weekdayIndex : null;
+  applyUIState();
+  updateVisuals();
+});
+
 
 allYearBtn.addEventListener("click", () => {
   state.mode = "ALL";
