@@ -222,6 +222,30 @@
       min-width: 0;
     }
 
+    .panelTitleRow{
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .panelTitleRow .panelTitle{
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .panelTitleMeta{
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+      flex: 0 1 auto;
+    }
+
     .panelHeaderActions{
       display: flex;
       align-items: center;
@@ -421,7 +445,10 @@
 
       <section class="panel" id="heatmapPanel">
         <div class="panelHeader">
-          <div class="panelTitle">Accidents by Day &amp; Hour</div>
+          <div class="panelTitleRow">
+            <div class="panelTitle">Accidents by Day &amp; Hour</div>
+            <div id="heatmapMonthAvg" class="panelTitleMeta"></div>
+          </div>
           <button class="fsBtn" data-fs="heatmap">Fullscreen</button>
         </div>
         <div class="vizSlot" id="heatmapSlot">

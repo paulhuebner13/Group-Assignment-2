@@ -24,6 +24,30 @@ const severityChecks = Array.from(document.querySelectorAll("[data-sev-check]"))
 
 const monthLabelsWrap = document.getElementById("monthLabels");
 const monthLabelEls = Array.from(monthLabelsWrap.querySelectorAll(".monthLabel"));
+const heatmapMonthAvgEl = document.getElementById("heatmapMonthAvg");
+
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function computeAvgAccidentsPerDay(rows) {
+  if (!rows || rows.length === 0) return 0;
+  const days = new Set(rows.map(r => r.dayKey)).size;
+  return days > 0 ? rows.length / days : 0;
+}
+
+function updateHeatmapMonthAvg() {
+  if (!heatmapMonthAvgEl) return;
+  if (!preparedRows || preparedRows.length === 0) {
+    heatmapMonthAvgEl.textContent = "";
+    return;
+  }
+
+  const label = (state.mode === "MONTH") ? (MONTH_NAMES[state.monthIndex] || "All") : "All";
+  const rows = (state.mode === "MONTH")
+    ? preparedRows.filter(r => r.monthIndex === state.monthIndex)
+    : preparedRows;
+
+  heatmapMonthAvgEl.textContent = `${label}: ${computeAvgAccidentsPerDay(rows).toFixed(1)}/day`;
+}
 
 const panels = {
   map: document.getElementById("mapPanel"),
@@ -67,6 +91,7 @@ const CONFIG = {
 function applyUIState() {
   allYearBtn.setAttribute("aria-pressed", state.mode === "ALL" ? "true" : "false");
   slider.classList.toggle("isInactive", state.mode === "ALL");
+  updateHeatmapMonthAvg();
 
   if (mapViewBtn) {
     mapViewBtn.textContent = (state.mapView === "DOTS") ? "View: Points" : "View: Pie Charts";
