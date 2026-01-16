@@ -56,17 +56,22 @@ const panels = {
 };
 
 const state = {
-  mode: "ALL",      // all or only MONTH
+  mode: "ALL",
   monthIndex: 0,
-  weekdayFilter: null, // null = all days, else 0..6 (Mon..Sun)
+  weekdayFilter: null,
   fullscreen: null,
-  mapView: "DOTS",  // DOTS or PIES
+  mapView: "DOTS",
   severityFilter: {
     Fatal: true,
     Serious: true,
     Slight: true
-  }
+  },
+
+  // NEW: shared filters coming from Severity Distribution panel
+  roadSurfaceFilter: "All",
+  roadTypeFilter: "All"
 };
+
 
 
 // ---- Module instances ----
@@ -139,6 +144,17 @@ window.addEventListener("weekdayFilterChange", (e) => {
   applyUIState();
   updateVisuals();
 });
+
+window.addEventListener("roadSurfaceFilterChange", (e) => {
+  state.roadSurfaceFilter = (e && e.detail) ? e.detail.value : "All";
+  updateVisuals();
+});
+
+window.addEventListener("roadTypeFilterChange", (e) => {
+  state.roadTypeFilter = (e && e.detail) ? e.detail.value : "All";
+  updateVisuals();
+});
+
 
 
 allYearBtn.addEventListener("click", () => {

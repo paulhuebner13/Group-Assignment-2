@@ -3,17 +3,28 @@
 
   const parseDate = d3.timeParse("%d/%m/%Y");
 
+    function normalizeFilterValue(value) {
+    const v = (value ?? "").toString().trim();
+    return v.length ? v : "Unknown";
+  }
+
+
   function prepareRows(rawRows) {
     return rawRows.map(r => {
       const d = parseDate(r["Accident Date"]);
-      return {
-  longitude: +r.Longitude,
-  latitude: +r.Latitude,
-  severity: r.Accident_Severity,
-  district: r["Local_Authority_(District)"] || "",
-  monthIndex: d ? d.getMonth() : null,
-  weekdayIndex: d ? ((d.getDay() + 6) % 7) : null // Mon=0 ... Sun=6
-};
+            return {
+        longitude: +r.Longitude,
+        latitude: +r.Latitude,
+        severity: r.Accident_Severity,
+        district: r["Local_Authority_(District)"] || "",
+        monthIndex: d ? d.getMonth() : null,
+        weekdayIndex: d ? ((d.getDay() + 6) % 7) : null, // Mon=0 ... Sun=6
+
+        // NEW: same categories as barchart filters
+        roadSurface: normalizeFilterValue(r["Road_Surface_Conditions"]),
+        roadType: normalizeFilterValue(r["Road_Type"])
+      };
+
 
     }).filter(d =>
   Number.isFinite(d.longitude) &&
@@ -511,8 +522,14 @@
     ? (rowsByMonth[monthIdx] || [])
     : allRows;
 
-  return base.filter(r => {
+    return base.filter(r => {
     if (!sevFilter[r.severity]) return false;
+
+    // NEW: road surface / type filters (default "All")
+    const rs = state.roadSurfaceFilter || "All";
+    const rt = state.roadTypeFilter || "All";
+    if (rs !== "All" && r.roadSurface !== rs) return false;
+    if (rt !== "All" && r.roadType !== rt) return false;
 
     if (state.weekdayFilter !== null && state.weekdayFilter !== undefined) {
       if (r.weekdayIndex !== state.weekdayFilter) return false;
@@ -520,6 +537,7 @@
 
     return true;
   });
+
 }
 
 

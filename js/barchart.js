@@ -429,17 +429,29 @@ gLegend.attr("transform", `translate(${legendX},${legendY})`);
     if (roadSurfaceSelect) {
       populateFilterSelect(roadSurfaceSelect, buildFilterOptions(preparedRows, "roadSurface"), "All surfaces");
       roadSurfaceSelect.addEventListener("change", () => {
-        roadSurfaceFilter = roadSurfaceSelect.value;
-        render(lastState, false);
-      });
+  roadSurfaceFilter = roadSurfaceSelect.value;
+
+  window.dispatchEvent(new CustomEvent("roadSurfaceFilterChange", {
+    detail: { value: roadSurfaceFilter }
+  }));
+
+  render(lastState, false);
+});
+
     }
 
     if (roadTypeSelect) {
       populateFilterSelect(roadTypeSelect, buildFilterOptions(preparedRows, "roadType"), "All road types");
       roadTypeSelect.addEventListener("change", () => {
-        roadTypeFilter = roadTypeSelect.value;
-        render(lastState, false);
-      });
+  roadTypeFilter = roadTypeSelect.value;
+
+  window.dispatchEvent(new CustomEvent("roadTypeFilterChange", {
+    detail: { value: roadTypeFilter }
+  }));
+
+  render(lastState, false);
+});
+
     }
 
     clearSlot(el);
