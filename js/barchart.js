@@ -30,7 +30,11 @@
   function normalizeSeverity(sev) {
     if (!sev) return null;
     let s = String(sev).trim();
-    if (s === "Fetal") s = "Fatal";
+    const lower = s.toLowerCase();
+    if (lower === "fetal") s = "Fatal";
+    if (lower === "fatal") s = "Fatal";
+    if (lower === "serious") s = "Serious";
+    if (lower === "slight") s = "Slight";
     return s;
   }
 
@@ -189,6 +193,8 @@
   function aggregate(rows, state) {
     const sevFilter = state?.severityFilter || { Fatal: true, Serious: true, Slight: true };
 
+    const severities = SEVERITY_ORDER.filter(s => !!sevFilter[s]);
+
     const filtered = rows.filter(r => {
   if (!sevFilter[r.severity]) return false;
   if (roadSurfaceFilter !== "All" && r.roadSurface !== roadSurfaceFilter) return false;
@@ -201,10 +207,6 @@
   if (state?.mode === "MONTH") return r.monthIndex === state.monthIndex;
   return true;
 });
-
-
-    const present = new Set(filtered.map(d => d.severity));
-    const severities = SEVERITY_ORDER.filter(s => present.has(s));
 
     const byHour = Array.from({ length: 24 }, (_, hour) => {
       const o = { hour };
@@ -270,7 +272,7 @@
 
     const { byHour, severities } = aggregate(preparedRows, lastState);
 
-    const safeSevs = severities.length ? severities : ["Slight"];
+    const safeSevs = severities;
 
     const x = d3.scaleBand()
   .domain(d3.range(24))
