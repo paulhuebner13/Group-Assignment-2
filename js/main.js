@@ -136,7 +136,7 @@ document.querySelectorAll("[data-fs]").forEach(btn => {
 
     applyUIState();
 
-    // make current state available for barchart resize() (your barchart uses window.__APP_STATE__)
+    // current state available for barchart resize() (your barchart uses window.__APP_STATE__)
     window.__APP_STATE__ = state;
 
     // wait for CSS/grid to apply, then resize + update

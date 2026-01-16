@@ -26,9 +26,8 @@
     return grid;
   }
 
-  // IMPORTANT: avg is computed once and stored in each cell
   function aggregateAvgPerDay(rows) {
-    const counts = new Map(); // "w|h" -> count
+    const counts = new Map();
     const weekdayDays = Array.from({ length: 7 }, () => new Set()); // distinct day keys per weekday
 
     for (const r of rows) {

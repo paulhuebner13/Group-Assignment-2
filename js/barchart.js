@@ -1,5 +1,5 @@
 // js/barchart.js
-// Stacked bar chart by hour with stable resizing and clean centering.
+// Stacked bar chart by hour with stable resizing and centering
 // Exposes window.barchartModule = { prepareRows, init }.
 
 (function () {
@@ -12,7 +12,7 @@
     grid: "rgba(255,255,255,0.10)"
   };
 
-  // Adjust colours here
+  // Adjust colours
   const COLORS = {
     Slight: "#efeb2c",
     Serious: "#ff9800",
@@ -88,7 +88,6 @@
     return t;
   }
 
-  // Data preparation (called from main.js)
   function prepareRows(rawRows) {
     const out = [];
     for (const r of rawRows) {
@@ -98,7 +97,7 @@
       if (!d || h === null || !sev) continue;
 
       out.push({
-        monthIndex: d.getMonth(), // 0..11
+        monthIndex: d.getMonth(),
         hour: h, // 0..23
         severity: sev,
         roadSurface: normalizeFilterValue(r["Road_Surface_Conditions"]),

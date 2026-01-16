@@ -24,7 +24,7 @@
     prepareRows,
 
     init({ slotSelector, preparedRows }) {
-      // Grid size in projected pixels; zoom exponent keeps pies from exploding into too many tiny bins.
+      // Grid size in projected pixels zoom exponent keeps pies from exploding into too many tiny bins.
       const BASE_GRID_SIZE_PX = 64;
       const MIN_GRID_SIZE_PX = 18;
       const MAX_GRID_SIZE_PX = 160;
